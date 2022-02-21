@@ -17,6 +17,8 @@ class MPC():
         self.WallFunc, self.RoomFunc = self.get_dynamics_functions()
         
         self.w = self.get_decision_variables()
+        self.n_states = self.w['State', 0].numel()
+        
         self.w0 = self.w(0)
         self.p = self.get_parameters_structure()
         self.J = self.get_cost_funtion()
@@ -25,7 +27,7 @@ class MPC():
         self.solver = self.get_solver()
         
     def get_parameters_structure(self):
-        p_weights = struct_symMX([entry('Energy'), entry('Comfort')])
+        p_weights = struct_symMX([entry('Energy'), entry('Comfort'), entry('Peak')])
         p_model = struct_symMX([entry('rho_out'), entry('rho_in')])
         p_price = struct_symMX([entry('spot_price')])
         return struct_symMX([
@@ -52,7 +54,7 @@ class MPC():
         return WallFunc, RoomFunc
 
     def get_decision_variables(self):
-        MPCstates = struct_symMX([entry('Room'), entry('Wall')])
+        MPCstates = struct_symMX([entry('Room'), entry('Wall'), entry('Peak')])
         MPCinputs = struct_symMX([entry('P_hp')])
 
         w = struct_symMX([
@@ -68,6 +70,8 @@ class MPC():
             J += self.p['Weights', 'Comfort'] * (self.w['State', k, 'Room'] - self.ref_temp)**2
             
         J += self.p['Weights', 'Comfort'] * (self.w['State', k+1, 'Room'] - self.ref_temp)**2 # Accounting for the last time step state
+        
+        J += self.p['Weights', 'Peak'] * self.N * self.w['State', -1, 'Peak']
         return J
     
     def get_constraints(self):
@@ -91,6 +95,13 @@ class MPC():
             lbg.append(0)
             ubg.append(0)
             
+            g.append(self.w['State', k+1, 'Peak'] - self.w['State', k, 'Peak'])
+            lbg.append(0)
+            ubg.append(inf)
+            g.append(self.w['State', k, 'Peak'] - self.w['Input', k, 'P_hp'])
+            lbg.append(0)
+            ubg.append(inf)
+            
         lbw = self.w(-inf)
         ubw = self.w(inf)
         lbw['Input', 1::, "P_hp"] = 0
@@ -104,16 +115,21 @@ class MPC():
         return nlpsol('solver', 'ipopt', mpc_problem, opts)
     
     def update_initial_state(self, x_0):
-        t_room = x_0[:2*N-1:2]
-        t_wall = x_0[1:2*N:2]
-        P_hp = x_0[2*N:]
+        N = self.N
+        n = self.n_states
+        t_room = x_0[:n*N:n]
+        t_wall = x_0[1:n*N:n]
+        s_peak = x_0[2:n*N:n]
+        P_hp = x_0[n*N:]
         
         for i in range(N-1):
             self.w0['State', i, 'Wall'] = t_wall[i+1]
             self.w0['State', i, 'Room'] = t_room[i+1]
+            self.w0['State', i, 'Peak'] = s_peak[i+1]
         self.w0['State', -1, 'Wall'] = t_wall[-1]
         self.w0['State', -1, 'Room'] = t_room[-1]
-            
+        self.w0['State', -1, 'Peak'] = s_peak[-1]
+        
         for i in range(N-2):
             self.w0['Input', i, 'P_hp'] = P_hp[i+1]
         self.w0['Input', -1, 'P_hp'] = P_hp[-1]
@@ -124,6 +140,9 @@ class MPC():
         
         self.lbw['State', 0, 'Room'] = self.w0['State', 0, 'Room']
         self.ubw['State', 0, 'Room'] = self.w0['State', 0, 'Room']
+        
+        self.lbw['State', 0, 'Peak'] = self.w0['State', 0, 'Peak']
+        self.ubw['State', 0, 'Peak'] = self.w0['State', 0, 'Peak']
         
         self.lbw['Input', 0, 'P_hp'] = self.w0['Input', 0, 'P_hp']
         self.ubw['Input', 0, 'P_hp'] = self.w0['Input', 0, 'P_hp']
@@ -152,15 +171,16 @@ def price_func_exp(x):
             + 0.7 *np.exp(-((x-96-288)/40)**2) + np.exp(-((x-216-288)/60)**2))
 
 N = 288 # MPC horizon (how far it optimizes)
-T = 288 # Running time (how many times do we solve opt. prob.)
+T = 50 # Running time (how many times do we solve opt. prob.)
 spot_prices = np.fromfunction(price_func_exp, (N+T,)) # Spot prices for two days, 5 min intervals
 
-state_0 = {'Wall': 13, 'Room': 15, 'P_hp': 1}
-
-x_0 = np.zeros(2*N + (N-1))
-x_0[:2*N-1:2] = state_0['Room']
-x_0[1:2*N:2] = state_0['Wall']
-x_0[2*N:] = state_0['P_hp']
+state_0 = {'Wall': 13, 'Room': 15, 'Peak': 0, 'P_hp': 0}
+n = 3 # Number of states
+x_0 = np.zeros(n*N + (N-1))
+x_0[:n*N:n] = state_0['Room']
+x_0[1:n*N:n] = state_0['Wall']
+x_0[2:n*N:n] = state_0['Peak']
+x_0[n*N:] = state_0['P_hp']
 
 mpc = MPC(N)
 
@@ -168,21 +188,24 @@ p_num = mpc.p(0)
 
 p_num['Weights', 'Energy'] = 100
 p_num['Weights', 'Comfort'] = 1
+p_num['Weights', 'Peak'] = 0.5 # 5
 p_num['Model', 'rho_out'] = 0.18
 p_num['Model', 'rho_in'] = 0.37
 #%%
 t_wall_full = [state_0['Wall']]
 t_room_full = [state_0['Room']]
 P_hp_full = [state_0['P_hp']]
+s_peak_full = [state_0['Peak']]
 
 print("Starting calculations with horizon length =", N)
 for t in range(T-1):
     for i in range(N):
         p_num['Price', i, 'spot_price'] = spot_prices[t+i]
     x = mpc.get_MPC_action(p_num, x_0)
-    t_wall_full.append(x[3])
-    t_room_full.append(x[2])
-    P_hp_full.append(x[2*N + 1])
+    t_room_full.append(x[3])
+    t_wall_full.append(x[4])
+    s_peak_full.append(x[5])
+    P_hp_full.append(x[n*N + 1])
     
     x_0 = x
     print("Iteration",t+1,"/",T,end="\r")
