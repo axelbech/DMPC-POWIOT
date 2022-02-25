@@ -170,8 +170,8 @@ def price_func_exp(x):
     return (1 + 0.7 *np.exp(-((x-96)/40)**2) + np.exp(-((x-216)/60)**2)
             + 0.7 *np.exp(-((x-96-288)/40)**2) + np.exp(-((x-216-288)/60)**2))
 
-N = 288 # MPC horizon (how far it optimizes)
-T = 50 # Running time (how many times do we solve opt. prob.)
+N = 10 # MPC horizon (how far it optimizes)
+T = 10 # Running time (how many times do we solve opt. prob.)
 spot_prices = np.fromfunction(price_func_exp, (N+T,)) # Spot prices for two days, 5 min intervals
 
 state_0 = {'Wall': 13, 'Room': 15, 'Peak': 0, 'P_hp': 0}
