@@ -1,25 +1,22 @@
 from casadi import *
 from casadi.tools import *
 import copy
-
-N = 4
+import numpy as np
+import matplotlib.pyplot as plt
 
 homes = ['seb', 'axel']
 
+N = 10
 
-MPC_states = struct_symMX([1, 2])
-MPC_inputs = struct_symMX([entry('P_hp')])
+time = [x for x in range(N)]
 
-states_all = []
-inputs_all = []
-for home in homes:
-    states_all.append(entry(home, struct=MPC_states))
-    inputs_all.append(entry(home, struct=MPC_inputs))
-states_all = struct_symMX(states_all)
-inputs_all = struct_symMX(inputs_all)
+l = []
+figures = []
 
-w = struct_symMX([
-entry('State', struct=states_all, repeat=N),
-entry('Input', struct=inputs_all, repeat=N-1),
-entry('Peak', repeat=N-1)
-])
+for idx, home in enumerate(homes):
+    l.append([x**idx for x in range(N)])
+    figures.append(plt.figure(home))
+    plt.plot(time, l[idx])
+
+plt.show()
+    

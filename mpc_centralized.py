@@ -8,11 +8,15 @@ import time
 import copy
 
 class MPC():
-    def __init__(self, N, homes, COP = 3.5, out_temp = 10, ref_temp = 23, P_max = 1.5):
+    def __init__(self, N, homes, COP = 3.5, out_temp = 10, ref_temp = None, P_max = 1.5):
         self.N = N
         self.homes = homes
         self.COP = COP
         self.out_temp = out_temp
+        if not ref_temp:
+            self.ref_temp = dict((home,23) for home in homes)
+        else:
+            self.ref_temp = ref_temp
         self.ref_temp = ref_temp
         self.P_max = P_max
         
@@ -81,9 +85,9 @@ class MPC():
         for home in self.homes:
             for k in range(self.N - 1):
                 J += self.p['Weights', 'Energy'] * self.p['Price', k, 'spot_price'] * self.w['Input', k, home, 'P_hp']
-                J += self.p['Weights', 'Comfort'] * (self.w['State', k, home, 'Room'] - self.ref_temp)**2
+                J += self.p['Weights', 'Comfort'] * (self.w['State', k, home, 'Room'] - self.ref_temp[home])**2
                 
-            J += self.p['Weights', 'Comfort'] * (self.w['State', k+1, home, 'Room'] - self.ref_temp)**2 # Accounting for the last time step state
+            J += self.p['Weights', 'Comfort'] * (self.w['State', k+1, home, 'Room'] - self.ref_temp[home])**2 # Accounting for the last time step state
         
         J += self.p['Weights', 'Peak'] * self.N * self.n_homes * self.w['Peak', -1]
         return J
@@ -182,13 +186,14 @@ def price_func_exp(x):
             + 0.7 *np.exp(-((x-96-288)/40)**2) + np.exp(-((x-216-288)/60)**2))
 
 N = 288 # MPC horizon (how far it optimizes)
-T = 10 # Running time (how many times do we solve opt. prob.)
+T = 20 # Running time (how many times do we solve opt. prob.)
 spot_prices = np.fromfunction(price_func_exp, (N+T,)) # Spot prices for two days, 5 min intervals
-homes = ['axel', 'seb', 'kang']
+homes = ['axel', 'seb']
+ref_temp = {'axel': 21, 'seb': 24}
 
 state_0_axel = {'Wall': 9, 'Room': 10, 'P_hp': 0}
 state_0_seb = {'Wall': 14, 'Room': 16, 'P_hp': 0}
-state_0_kang = {'Wall': 24, 'Room': 28, 'P_hp': 0}
+# state_0_kang = {'Wall': 24, 'Room': 28, 'P_hp': 0}
 state_0 = {'axel': state_0_axel, 'seb': state_0_seb}
 n = 3 # Number of states
 # x_0 = np.zeros(n*N + (N-1))
@@ -197,7 +202,7 @@ n = 3 # Number of states
 # x_0[2:n*N:n] = state_0['Peak']
 # x_0[n*N:] = state_0['P_hp']
 
-mpc = MPC(N, homes)
+mpc = MPC(N, homes, ref_temp=ref_temp)
 
 #%%
 
@@ -211,7 +216,7 @@ p_num = mpc.p(0)
 
 p_num['Weights', 'Energy'] = 100
 p_num['Weights', 'Comfort'] = 1
-p_num['Weights', 'Peak'] = 0.01
+p_num['Weights', 'Peak'] = 20
 p_num['Model', 'rho_out'] = 0.18
 p_num['Model', 'rho_in'] = 0.37
 #%%
@@ -256,19 +261,29 @@ for t in range(T-1):
 
 time = [x for x in range(T)]
 
-#%%
+#%% 
 
-fig,ax=plt.subplots()
-ax.plot(time, traj_full['axel']['Room'], label="T_room")
-ax.set_xlabel("5 minute intervals")
-ax.set_ylabel("Temperature [°C]")
-ax.plot()
-ax.plot(time, traj_full['axel']['Wall'], label="T_wall")
-ax.legend()
+for idx, home in enumerate(homes):
+    # plt.figure(home)
+    fig,ax=plt.subplots(num=home)
+    ax.plot(time, traj_full[home]['Room'], label="T_room")
+    ax.set_xlabel("5 minute intervals")
+    ax.set_ylabel("Temperature [°C]")
+    ax.plot()
+    ax.plot(time, traj_full[home]['Wall'], label="T_wall")
+    ax.legend()
 
-axPwr = ax.twinx()
-axPwr.plot(time, traj_full['axel']['P_hp'], label="P_hp", color="green")
-axPwr.set_ylabel("Power [kW]")
-axPwr.legend()
+    axPwr = ax.twinx()
+    axPwr.plot(time, traj_full[home]['P_hp'], label="P_hp", color="green")
+    axPwr.set_ylabel("Power [kW]")
+    axPwr.legend()
+    
 plt.show()
+
+# fig,ax=plt.subplots()
+# for idx, home in enumerate(homes):
+#     ax.plot(time, traj_full[home]['P_hp'], label=home)
+#     ax.set_ylabel("Power [kW]")
+#     ax.legend()
+# plt.show()
 # %%
