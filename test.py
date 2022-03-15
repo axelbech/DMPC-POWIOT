@@ -1,22 +1,21 @@
+import time
 from casadi import *
 from casadi.tools import *
-import copy
-import numpy as np
-import matplotlib.pyplot as plt
 
-homes = ['seb', 'axel']
+import concurrent.futures
+from multiprocessing import Pool
+import pickle
+import os
 
-N = 10
+R = 64
+la = [x for x in range(R)]
+lb = [2*x for x in range(R)]
 
-time = [x for x in range(N)]
+def func(a, b):
+    print(os.getpid())
+    return a + b
 
-l = []
-figures = []
-
-for idx, home in enumerate(homes):
-    l.append([x**idx for x in range(N)])
-    figures.append(plt.figure(home))
-    plt.plot(time, l[idx])
-
-plt.show()
-    
+if __name__ == '__main__':
+    pool = Pool(processes=8)
+    m = pool.starmap(func, zip(la, lb))
+    print(m) 

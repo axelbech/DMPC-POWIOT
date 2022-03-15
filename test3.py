@@ -6,6 +6,10 @@ import matplotlib.pyplot as plt
 
 import time
 import copy
+import pickle
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from multiprocessing import Pool
+import os
 
 class MPC():
     def __init__(self, N, homes, COP = 3.5, out_temp = 10, ref_temp = None, P_max = 1.5):
@@ -27,10 +31,10 @@ class MPC():
         # self.n_inputs = self.w['Input', 0, homes[0]].numel()
         self.n_homes = len(homes)
         
-        self.w0 = self.w(0)
+        # self.w0 = self.w(0)
         self.p = self.get_parameters_structure()
-        self.J = self.get_cost_funtion()
-        self.g, self.lbg, self.ubg, self.lbw, self.ubw = self.get_constraints()
+        # self.J = self.get_cost_funtion()
+        # self.g, self.lbg, self.ubg, self.lbw, self.ubw = self.get_constraints()
         
         self.solver = self.get_solver()
         
@@ -98,8 +102,6 @@ class MPC():
         g = []
         lbg = []
         ubg = []
-        lbw = self.w(-inf)
-        ubw = self.w(inf)
         for home in self.homes:
             for k in range(self.N - 1):
                 Wall = self.w['State', k, home, 'Wall']
@@ -115,9 +117,6 @@ class MPC():
                 g.append(RoomPlus - self.w['State', k+1, home, 'Room'])
                 lbg.append(0)
                 ubg.append(0)
-            
-            lbw['Input', 1:, home, "P_hp"] = 0
-            ubw['Input', 1:, home, "P_hp"] = self.P_max
         
         for k in range(self.N - 2):
             g.append(self.w['Peak', k+1] - self.w['Peak', k])
@@ -131,52 +130,68 @@ class MPC():
             lbg.append(0)
             ubg.append(inf)
                 
-        return g, lbg, ubg, lbw, ubw
+        return g, lbg, ubg
     
     def get_solver(self):
-        mpc_problem = {'f': self.J, 'x': self.w, 'g': vertcat(*(self.g)), 'p': self.p}
+        g, self.lbg, self.ubg = self.get_constraints()
+        mpc_problem = {'f': self.get_cost_funtion(), 'x': self.w, 'g': vertcat(*(g)), 'p': self.p}
         opts = {'ipopt.print_level':0, 'print_time':0}
         return nlpsol('solver', 'ipopt', mpc_problem, opts)
     
-    def update_initial_state(self, x_0):
-        self.w0['State', :self.N-1] = x_0['State', 1:]
-        self.w0['State', -1] = x_0['State', -1]
-        
-        self.w0['Input', :self.N-2] = x_0['Input', 1:]
-        self.w0['Input', -1] = x_0['Input', -1]
-        
-        self.w0['Peak', :self.N-2] = x_0['Peak', 1:]
-        self.w0['Peak', -1] = x_0['Peak', -1]
-        
-    def update_constraints(self):
-        for home in self.homes:
-            self.lbw['State', 0, home, 'Wall'] = self.w0['State', 0, home, 'Wall']
-            self.ubw['State', 0, home, 'Wall'] = self.w0['State', 0, home, 'Wall']
-            
-            self.lbw['State', 0, home, 'Room'] = self.w0['State', 0, home, 'Room']
-            self.ubw['State', 0, home, 'Room'] = self.w0['State', 0, home, 'Room']
-            
-            self.lbw['Input', 0, home, 'P_hp'] = self.w0['Input', 0, home, 'P_hp']
-            self.ubw['Input', 0, home, 'P_hp'] = self.w0['Input', 0, home, 'P_hp']
-        
-        self.lbw['Peak', 0] = self.w0['Peak', 0]
-        self.ubw['Peak', 0] = self.w0['Peak', 0]
-        
-    def get_MPC_action(self, p_num, x_0):
-        then = time.time()
-        
-        self.update_initial_state(x_0)
-        self.update_constraints()
-
-        solution = self.solver(x0=self.w0, lbx=self.lbw, ubx=self.ubw,
+    def dummy_solver(self, w0, lbw, ubw, p_num):
+        solver = self.get_solver()
+        solution = solver(x0=w0, lbx=lbw, ubx=ubw,
                                lbg=self.lbg, ubg=self.ubg, p=p_num)
+        return solution['x']
         
-        now = time.time()
+    def get_MPC_action(self, w0, lbw, ubw, p_num):
+        # then = time.time()
+
+        solution = self.solver(x0=w0, lbx=lbw, ubx=ubw,
+                               lbg=self.lbg, ubg=self.ubg, p=p_num)
+        print(os.getpid())
         
-        print("Time elapsed = ", now-then, end="  ")
+        # now = time.time()
+        
+        # print("Time elapsed = ", now-then, end="  ")
 
         return solution['x']
     
+#%%
+    
+def update_constraints(w0, lbw, ubw, homes):
+    for home in homes:
+        lbw['State', 0, home, 'Wall'] = w0['State', 0, home, 'Wall']
+        ubw['State', 0, home, 'Wall'] = w0['State', 0, home, 'Wall']
+        
+        lbw['State', 0, home, 'Room'] = w0['State', 0, home, 'Room']
+        ubw['State', 0, home, 'Room'] = w0['State', 0, home, 'Room']
+        
+        lbw['Input', 0, home, 'P_hp'] = w0['Input', 0, home, 'P_hp']
+        ubw['Input', 0, home, 'P_hp'] = w0['Input', 0, home, 'P_hp']
+    
+    lbw['Peak', 0] = w0['Peak', 0]
+    ubw['Peak', 0] = w0['Peak', 0]
+    
+def update_initial_state(w0, x_0, N):
+    w0['State', :N-1] = x_0['State', 1:]
+    w0['State', -1] = x_0['State', -1]
+    
+    w0['Input', :N-2] = x_0['Input', 1:]
+    w0['Input', -1] = x_0['Input', -1]
+    
+    w0['Peak', :N-2] = x_0['Peak', 1:]
+    w0['Peak', -1] = x_0['Peak', -1]
+    
+def prepare_MPC_action(w0, x_0, N, homes, lbw, ubw):
+    update_initial_state(w0, x_0, N)
+    update_constraints(w0, lbw, ubw, homes)
+
+def nlpsol_wrapper(sol, w0, lbw, ubw, lbg, ubg, p_num):
+    res = sol(x0=w0, lbx=lbw, ubx=ubw, lbg=lbg, ubg=ubg, p=p_num)
+    print(os.getpid())
+    return res['x']
+
 
                 
 #%%
@@ -186,7 +201,7 @@ def price_func_exp(x):
             + 0.7 *np.exp(-((x-96-288)/40)**2) + np.exp(-((x-216-288)/60)**2))
 
 N = 288 # MPC horizon (how far it optimizes)
-T = 20 # Running time (how many times do we solve opt. prob.)
+T = 10 # Running time (how many times do we solve opt. prob.)
 spot_prices = np.fromfunction(price_func_exp, (N+T,)) # Spot prices for two days, 5 min intervals
 homes = ['axel', 'seb']
 ref_temp = {'axel': 21, 'seb': 24}
@@ -200,6 +215,13 @@ n = 3 # Number of states
 mpc = MPC(N, homes, ref_temp=ref_temp)
 
 #%%
+w0 = mpc.w(0)
+lbw = mpc.w(-inf)
+ubw = mpc.w(inf)
+    
+for home in mpc.homes:
+    lbw['Input', 1:, home, "P_hp"] = 0
+    ubw['Input', 1:, home, "P_hp"] = mpc.P_max
 
 x_0 = mpc.w(0)
 for home in homes:
@@ -213,10 +235,15 @@ p_num['Weights', 'Energy'] = 100
 p_num['Weights', 'Comfort'] = 1
 p_num['Weights', 'Peak'] = 20
 p_num['Model', 'rho_out'] = 0.18
+
 p_num['Model', 'rho_in'] = 0.37
+
+# mpc.update_numerical_parameters(p_num)
 #%%
 
 traj_full = {}
+# pickle.loads(pickle.dumps(mpc.w0))
+# pickle.loads(pickle.dumps(mpc.p_num))
 for home in homes:
     traj_full[home] = {'Room': [],'Wall': [],'P_hp': []}
     
@@ -227,47 +254,45 @@ for home in homes:
     traj_full[home]['Wall'].append(state_0[home]['Wall'])
     traj_full[home]['P_hp'].append(state_0[home]['P_hp'])
     traj_full['Peak'][0] += state_0[home]['P_hp']
+
     
-
-print("Starting calculations with horizon length =", N)
-for t in range(T-1):
-    for i in range(N):
-        p_num['Price', i, 'spot_price'] = spot_prices[t+i]
-    x = mpc.get_MPC_action(p_num, x_0)
-    x = mpc.w(x) # Convert into struct with same structure as w
-    for home in homes:
-        traj_full[home]['Room'].append(x['State', 1, home, 'Room'])
-        traj_full[home]['Wall'].append(x['State', 1, home, 'Wall'])
-        traj_full[home]['P_hp'].append(x['Input', 1, home, 'P_hp'])
-    traj_full['Peak'].append(x['Peak', 1])
-    
-    x_0 = x
-    print("Iteration",t+1,"/",T,end="\r")
-
-time = [x for x in range(T)]
-
-#%% 
-
-for idx, home in enumerate(homes):
-    # plt.figure(home)
-    fig,ax=plt.subplots(num=home)
-    ax.plot(time, traj_full[home]['Room'], label="T_room")
-    ax.set_xlabel("5 minute intervals")
-    ax.set_ylabel("Temperature [°C]")
-    ax.plot()
-    ax.plot(time, traj_full[home]['Wall'], label="T_wall")
-    ax.legend()
-
-    axPwr = ax.twinx()
-    axPwr.plot(time, traj_full[home]['P_hp'], label="P_hp", color="green")
-    axPwr.set_ylabel("Power [kW]")
-    axPwr.legend()
-    
-plt.show()
-
-# fig,ax=plt.subplots()
-# for idx, home in enumerate(homes):
-#     ax.plot(time, traj_full[home]['P_hp'], label=home)
-#     ax.set_ylabel("Power [kW]")
-#     ax.legend()
-# plt.show()
+if __name__ == '__main__':
+    print("Starting calculations with horizon length =", N)
+    # with Pool(processes=8) as pool:
+    with ProcessPoolExecutor() as executor:
+        for t in range(T-1):
+            for i in range(N):
+                p_num['Price', i, 'spot_price'] = spot_prices[t+i]
+            prepare_MPC_action(w0, x_0, mpc.N, mpc.homes, lbw, ubw)
+            futures = []
+            R = 2
+            # soll = [mpc.solver for _ in range(R)]
+            w0l = [w0.master for _ in range(R)]
+            lbwl = [lbw.master for _ in range(R)]
+            ubwl = [ubw.master for _ in range(R)]
+            # lbgl = [mpc.lbg for _ in range(R)]
+            # ubgl = [mpc.ubg for _ in range(R)]
+            p_numl = [p_num.master for _ in range(R)]
+            # then = time.time()
+            # # m = pool.starmap(mpc.get_MPC_action, zip(w0l, lbwl, ubwl, p_numl))
+            m = executor.map(mpc.get_MPC_action, w0l, lbwl, ubwl, p_numl, chunksize=8)
+            # now = time.time()
+            # print("Time elapsed = ", now-then, end="  ")
+            # for i in range(R):
+            #     futures.append(executor.submit(mpc.get_MPC_action, w0.master, lbw.master, ubw.master, p_num.master))
+                
+            # x = list(m)[0]
+            # print(x)
+            for i in range(R):
+                x = mpc.get_MPC_action(w0.master, lbw.master, ubw.master, p_num.master)
+            x = mpc.w(x) # Convert into struct with same structure as w
+            for home in homes:
+                traj_full[home]['Room'].append(x['State', 1, home, 'Room'])
+                traj_full[home]['Wall'].append(x['State', 1, home, 'Wall'])
+                traj_full[home]['P_hp'].append(x['Input', 1, home, 'P_hp'])
+            traj_full['Peak'].append(x['Peak', 1])
+            
+            x_0 = x
+            print("Iteration",t+1,"/",T,end="\r")
+            
+    print(traj_full['axel']['Room'])
