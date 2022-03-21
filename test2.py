@@ -19,18 +19,28 @@ class myClass():
     
     def get_action(self, w0, lbw, ubw):
         return self.solver(x0=w0, lbx=lbw, ubx=ubw)
+    
+    def execute_actions(self):
+        s0 = c.s(3)
+        lbw = 0
+        ubw = 5
+        with ProcessPoolExecutor(max_workers=8) as executor:
+            future = executor.submit(self.solver, x0=s0, lbx=lbw, ubx=ubw)
+            print(future.result())
 
-c = myClass()
 
-s0 = c.s(3)
-lbw = 0
-ubw = 5
+
+# s0 = c.s(3)
+# lbw = 0
+# ubw = 5
 
 if __name__ == '__main__':
+    c = myClass()
+    c.execute_actions()
     # print(loads(dumps(s0)))
-    with ProcessPoolExecutor() as executor:
-        future = executor.submit(c.get_action,s0.master,lbw,ubw)
-        print(future.result())
+    # with ProcessPoolExecutor() as executor:
+    #     future = executor.submit(c.get_action,s0.master,lbw,ubw)
+    #     print(future.result())
 
 # print(c.get_action(s0, lbw, ubw))
 

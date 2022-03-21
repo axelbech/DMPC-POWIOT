@@ -24,6 +24,8 @@ class MPC():
         self.ref_temp = ref_temp
         self.P_max = P_max
         
+        self.p = self.get_parameters_structure()
+        
         self.WallFunc, self.RoomFunc = self.get_dynamics_functions()
         
         self.w = self.get_decision_variables()
@@ -32,7 +34,6 @@ class MPC():
         self.n_homes = len(homes)
         
         # self.w0 = self.w(0)
-        self.p = self.get_parameters_structure()
         # self.J = self.get_cost_funtion()
         # self.g, self.lbg, self.ubg, self.lbw, self.ubw = self.get_constraints()
         
@@ -40,7 +41,7 @@ class MPC():
         
     def get_parameters_structure(self):
         p_weights = struct_symMX([entry('Energy'), entry('Comfort'), entry('Peak')])
-        p_model = struct_symMX([entry('rho_out'), entry('rho_in')])
+        p_model = struct_symMX([entry('rho_out'), entry('rho_in'), entry('COP')])
         p_price = struct_symMX([entry('spot_price')])
         return struct_symMX([
                 entry('Weights', struct=p_weights),
@@ -109,7 +110,7 @@ class MPC():
                 Pow = self.w['Input', k, home, 'P_hp']
                 
                 WallPlus = self.WallFunc(rho_out, rho_in, Wall, Room, self.out_temp)
-                RoomPlus = self.RoomFunc(rho_in, Room, Wall, self.COP, Pow)
+                RoomPlus = self.RoomFunc(rho_in, Room, Wall, self.p['Model','COP'], Pow)
                 
                 g.append(WallPlus - self.w['State', k+1, home, 'Wall'])
                 lbg.append(0)
@@ -201,7 +202,7 @@ def price_func_exp(x):
             + 0.7 *np.exp(-((x-96-288)/40)**2) + np.exp(-((x-216-288)/60)**2))
 
 N = 288 # MPC horizon (how far it optimizes)
-T = 10 # Running time (how many times do we solve opt. prob.)
+T = 20 # Running time (how many times do we solve opt. prob.)
 spot_prices = np.fromfunction(price_func_exp, (N+T,)) # Spot prices for two days, 5 min intervals
 homes = ['axel', 'seb']
 ref_temp = {'axel': 21, 'seb': 24}
@@ -235,8 +236,8 @@ p_num['Weights', 'Energy'] = 100
 p_num['Weights', 'Comfort'] = 1
 p_num['Weights', 'Peak'] = 20
 p_num['Model', 'rho_out'] = 0.18
-
 p_num['Model', 'rho_in'] = 0.37
+p_num['Model', 'COP'] = 3.5
 
 # mpc.update_numerical_parameters(p_num)
 #%%
