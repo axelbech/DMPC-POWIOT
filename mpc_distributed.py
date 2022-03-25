@@ -5,6 +5,7 @@ from casadi.tools import *
 import numpy as np
 import matplotlib.pyplot as plt
 
+from copy import copy
 from time import time 
 from pickle import dumps, loads
 from concurrent.futures import ProcessPoolExecutor
@@ -12,9 +13,6 @@ from concurrent.futures import ProcessPoolExecutor
 class MPC_single_home():
     def __init__(self, N, P_max = 1.5):
         self.N = N
-        # self.name = name
-        # self.out_temp = out_temp
-        # self.ref_temp = ref_temp
         self.P_max = P_max
 
         self.wall_func, self.room_func = self.get_dynamics_functions()
@@ -60,7 +58,7 @@ class MPC_single_home():
         entry('state', struct=MPC_states, repeat=self.N),
         entry('input', struct=MPC_inputs, repeat=self.N - 1)
         ])
-        return w    
+        return w
     
     def get_cost_funtion(self):
         J = 0
@@ -107,8 +105,17 @@ class MPC_single_home():
     def get_MPC_action(self, w0, lbw, ubw, p_num):
         solution = self.solver(x0=w0, lbx=lbw, ubx=ubw,
                                lbg=self.lbg, ubg=self.ubg, p=p_num)
+        print(f'home action PID: {os.getpid()}')
         return solution['x']
     
+    @staticmethod
+    def update_initial_state(w0, x_0, N):
+        w0['state', :N-1] = x_0['state', 1:]
+        w0['state', -1] = x_0['state', -1]
+        
+        w0['input', :N-2] = x_0['input', 1:]
+        w0['input', -1] = x_0['input', -1]
+        
     @staticmethod
     def update_constraints(w0, lbw, ubw):
         lbw['state', 0, 'wall'] = w0['state', 0, 'wall']
@@ -119,14 +126,6 @@ class MPC_single_home():
         
         lbw['input', 0, 'P_hp'] = w0['input', 0, 'P_hp']
         ubw['input', 0, 'P_hp'] = w0['input', 0, 'P_hp']
-        
-    @staticmethod
-    def update_initial_state(w0, x_0, N):
-        w0['state', :N-1] = x_0['state', 1:]
-        w0['state', -1] = x_0['state', -1]
-        
-        w0['input', :N-2] = x_0['input', 1:]
-        w0['input', -1] = x_0['input', -1]
         
     @staticmethod   
     def prepare_MPC_action(w0, x_0, N, lbw, ubw):
@@ -176,17 +175,18 @@ class MPC_peak_state():
     def solve_peak_problem(self, w0, lbw, ubw, p_num):
         solution = self.solver(x0=w0, lbx=lbw, ubx=ubw,
                                 lbg=self.lbg, ubg=self.ubg, p=p_num)
+        print(f'peak action PID: {os.getpid()}')
         return solution['x']
     
-    @staticmethod
-    def update_constraints(w0, lbw, ubw):
-        lbw['peak', 0] = w0['peak', 0]
-        ubw['peak', 0] = w0['peak', 0] 
-        
     @staticmethod
     def update_initial_state(w0, x_0, n_steps):
         w0['peak', :n_steps-1] = x_0['peak', 1:]
         w0['peak', -1] = x_0['peak', -1]
+        
+    @staticmethod
+    def update_constraints(w0, lbw, ubw):
+        lbw['peak', 0] = w0['peak', 0]
+        ubw['peak', 0] = w0['peak', 0] 
         
     @staticmethod   
     def prepare_action(w0, x_0, n_steps, lbw, ubw):
@@ -194,28 +194,35 @@ class MPC_peak_state():
         MPC_peak_state.update_constraints(w0, lbw, ubw)
 
 class DMPC():
-    def __init__(self, N, T, home_list, state_0, spot_prices, outdoor_temperature):
+    def __init__(self, N, T, home_list, state_0, spot_prices, outdoor_temperature, reference_temperature, dual_variable):
         self.N = N
         self.T = T
         self.home_list = home_list
-        self.state_dict = self.build_state_dict(N, T, home_list, state_0, spot_prices, outdoor_temperature)
+        self.spot_prices = spot_prices
+        self.outdoor_temperature = outdoor_temperature
+        self.reference_temperature = reference_temperature
+        self.state_dict = self.build_state_dict(
+            N, T, home_list, state_0, spot_prices, outdoor_temperature, reference_temperature, dual_variable
+            )
         self.executor = ProcessPoolExecutor()
         
     @staticmethod
-    def build_state_dict(N, T, home_list, state_0, spot_prices, outdoor_temperature):
+    def build_state_dict(N, T, home_list, state_0, spot_prices, outdoor_temperature, reference_temperature, dual_variable):
         mpc_single_home = MPC_single_home(N)
-        state_dict = {'mpc_single_home': mpc_single_home, 'homes': dict.fromkeys(home_list, {}),  'peak': {}}
-        for home, home_dict in zip(home_list, state_dict['homes'].values()):
-            # mpc = MPC_single_home(N, home)
+        state_dict = {'mpc_single_home': mpc_single_home, 'homes': dict.fromkeys(home_list),  'peak': {}}
+        for home in home_list:
+            home_dict = {}
             
             p_num = mpc_single_home.p(0)
-            p_num['outdoor_temperature', :] = list(outdoor_temperature)
-            p_num['reference_temperature', :] = list(ref_temp[home])
+            p_num['outdoor_temperature', :] = list(outdoor_temperature[:N])
+            p_num['reference_temperature', :] = list(reference_temperature[home][:N])
             p_num['spot_price', :] = list(spot_prices[:N-1])
+            p_num['dual_variable', :] = list(dual_variable)
             p_num['weights', 'energy'] = 100
             p_num['weights', 'comfort'] = 1
             p_num['model', 'rho_out'] = 0.18
             p_num['model', 'rho_in'] = 0.37
+            p_num['model', 'COP'] = 3.5
             
             w0 = mpc_single_home.w(0)
             lbw = mpc_single_home.w(-inf)
@@ -239,11 +246,13 @@ class DMPC():
             home_dict['lbw'] = lbw
             home_dict['ubw'] = ubw
             home_dict['traj_full'] = traj_full
+            state_dict['homes'][home] = home_dict
             
         mpc_peak = MPC_peak_state(N-1, len(home_list))
 
         p_num = mpc_peak.p(0)
         p_num['weight'] = 20
+        p_num['dual_variable', :] = list(dual_variable)
 
         w0 = mpc_peak.w(0)
         lbw = mpc_peak.w(-inf)
@@ -265,57 +274,219 @@ class DMPC():
         state_dict['peak']['ubw'] = ubw
         state_dict['peak']['traj_full'] = traj_full
         
-        state_dict['dual_variables'] = {
-            'current_value': np.ones(N),
-            'traj_full': np.ones((T,N))
+        state_dict['dual_variable'] = {
+            'current_value': dual_variable, #np.ones(N-1),
+            'traj_full': np.ones((T,N-1))
         }
+        state_dict['dual_variable']['traj_full'][0] = dual_variable
         
         return state_dict
     
+    def update_home_params(self, t):
+        for home, home_dict in zip(self.home_list, self.state_dict['homes'].values()):
+            home_dict['p_num']['outdoor_temperature', :] = list(self.outdoor_temperature[t:t+N])
+            home_dict['p_num']['reference_temperature', :] = list(self.reference_temperature[home][t:t+N])
+            home_dict['p_num']['spot_price', :] = list(self.spot_prices[t:t+N-1])
+    
+    def update_state_trajectory(self, result_list, result_peak, t):
+        for res_home, home_dict in zip(result_list, self.state_dict['homes'].values()):
+            home_dict['x'] = res_home
+            home_dict['traj_full']['room'][t] = res_home['state', 0, 'room']
+            home_dict['traj_full']['wall'][t] = res_home['state', 0, 'wall']
+            home_dict['traj_full']['P_hp'][t] = res_home['input', 0, 'P_hp']
+            
+        self.state_dict['peak']['x'] = result_peak
+        self.state_dict['peak']['traj_full'][t] = result_peak['peak', 0]
+    
+    def update_dual_variable(self, t):
+        dual_update = np.zeros(self.N-1)
+        for home_dict in self.state_dict['homes'].values():
+            dual_update += np.array(vertcat(*home_dict['x']['input',:,'P_hp'])).flatten()
+        dual_update -= np.array(vertcat(*self.state_dict['peak']['x']['peak',:])).flatten()
+        
+        self.state_dict['dual_variable']['current_value'] += dual_update
+        self.state_dict['dual_variable']['traj_full'][t] = self.state_dict['dual_variable']['current_value']
+        
+        for home_dict in self.state_dict['homes'].values():
+            home_dict['p_num']['dual_variable'] = list(self.state_dict['dual_variable']['current_value']) 
+        self.state_dict['peak']['p_num']['dual_variable'] = list(self.state_dict['dual_variable']['current_value']) 
+    
     def run_full(self):
+        
         mpc_single_home = self.state_dict['mpc_single_home']
-        for home in self.state_dict['homes'].values():
-            mpc_single_home.prepare_MPC_action(
-                home['w0'], home['x'], self.N, home['lbw'], home['ubw']
-            )
+        peak_dict = self.state_dict['peak']
+        mpc_peak = peak_dict['mpc']
+        
+        for t in range(1, self.T):
 
-        w0_list = [self.state_dict['homes'][home]['w0'].master for home in self.home_list]
-        x_list = [self.state_dict['homes'][home]['x'].master for home in self.home_list]
+            self.update_dual_variable(t)
+            self.repeat_single_step()
+            return
+        
+            for home in self.state_dict['homes'].values():
+                mpc_single_home.prepare_MPC_action(
+                    home['w0'], home['x'], self.N, home['lbw'], home['ubw']
+                )
+                
+            mpc_peak.prepare_action(
+                peak_dict['w0'], peak_dict['x'], mpc_peak.n_steps, peak_dict['lbw'], peak_dict['ubw']
+            )
+            
+            peak_future = self.executor.submit(
+                mpc_peak.solve_peak_problem, peak_dict['w0'].master, peak_dict['lbw'].master,
+                peak_dict['ubw'].master, peak_dict['p_num'].master
+            )   
+
+            w0_list = [self.state_dict['homes'][home]['w0'].master for home in self.home_list]
+            lbw_list = [self.state_dict['homes'][home]['lbw'].master for home in self.home_list]
+            ubw_list = [self.state_dict['homes'][home]['ubw'].master for home in self.home_list]
+            p_num_list = [self.state_dict['homes'][home]['p_num'].master for home in self.home_list]
+            
+            result_map = self.executor.map(mpc_single_home.get_MPC_action, 
+                                w0_list, lbw_list, ubw_list, p_num_list, chunksize=8)
+            result_list = [self.state_dict['mpc_single_home'].w(x) for x in list(result_map)]
+            result_peak = mpc_peak.w(peak_future.result())
+            
+
+            self.update_state_trajectory(result_list, result_peak, t)
+                
+            
+            self.update_home_params(t)
+            
+            print(f'Iteration {t} / {self.T}')
+            
+            
+    
+    def update_state(self, result_list, result_peak):
+        for res_home, home_dict in zip(result_list, self.state_dict['homes'].values()):
+            home_dict['x'] = res_home
+        self.state_dict['peak']['x'] = result_peak
+    
+    def update_current_dual_variable(self):
+        dual_update = np.zeros(self.N-1)
+        for home_dict in self.state_dict['homes'].values():
+            dual_update += np.array(vertcat(*home_dict['x']['input',:,'P_hp'])).flatten()
+        dual_update -= np.array(vertcat(*self.state_dict['peak']['x']['peak',:])).flatten()
+        
+        self.state_dict['dual_variable']['current_value'] += dual_update
+        
+        for home_dict in self.state_dict['homes'].values():
+            home_dict['p_num']['dual_variable'] = list(self.state_dict['dual_variable']['current_value']) 
+        self.state_dict['peak']['p_num']['dual_variable'] = list(self.state_dict['dual_variable']['current_value']) 
+        
+    def repeat_single_step(self):
+        mpc_single_home = self.state_dict['mpc_single_home']
+        peak_dict = self.state_dict['peak']
+        mpc_peak = peak_dict['mpc']
+        
         lbw_list = [self.state_dict['homes'][home]['lbw'].master for home in self.home_list]
         ubw_list = [self.state_dict['homes'][home]['ubw'].master for home in self.home_list]
         p_num_list = [self.state_dict['homes'][home]['p_num'].master for home in self.home_list]
         
-        m = self.executor.map(mpc_single_home.get_MPC_action, 
-                              w0_list, lbw_list, ubw_list, p_num_list, chunksize=8)
-        
-        return list(m)[0]
-        
+        numIt = 0
+        while True:
+            
+            
+            dual_variable_last = copy(self.state_dict['dual_variable']['current_value'])
+            iteration_difference = 1
+            
+            for home in self.state_dict['homes'].values():
+                mpc_single_home.update_initial_state(
+                    home['w0'], home['x'], self.N
+                )
+                
+
+            mpc_peak.prepare_action(
+                peak_dict['w0'], peak_dict['x'], mpc_peak.n_steps, peak_dict['lbw'], peak_dict['ubw']
+            )
+            
+            peak_future = self.executor.submit(
+                mpc_peak.solve_peak_problem, peak_dict['w0'].master, peak_dict['lbw'].master,
+                peak_dict['ubw'].master, peak_dict['p_num'].master
+            )   
+
+            w0_list = [self.state_dict['homes'][home]['w0'].master for home in self.home_list]
+            
+            result_map = self.executor.map(mpc_single_home.get_MPC_action, 
+                                w0_list, lbw_list, ubw_list, p_num_list, chunksize=8)
+            result_list = [self.state_dict['mpc_single_home'].w(x) for x in list(result_map)]
+            result_peak = mpc_peak.w(peak_future.result())
+
+            self.update_state(result_list, result_peak)
+                
+            self.update_current_dual_variable()
+
+            iteration_difference = ((self.state_dict['dual_variable']['current_value'] - dual_variable_last)**2).mean()
+            avg_value = np.average(self.state_dict['dual_variable']['current_value'])
+            print(f'Internal iteration number {numIt}, iteration difference = {iteration_difference}')
+            print(f'Average dual variable value: {avg_value}')
+            if iteration_difference < 0.1 or numIt >= 30:
+                break
+            
+            numIt += 1
 
 #%%
 
 def price_func_exp(x): # Function to emulate fluctuating power prices at 5 minute intervals
     return (1 + 0.7 *np.exp(-((x-96)/40)**2) + np.exp(-((x-216)/60)**2)
             + 0.7 *np.exp(-((x-96-288)/40)**2) + np.exp(-((x-216-288)/60)**2))
-
 N = 288 # MPC horizon (how far it optimizes)
-T = 10 # Running time (how many times do we solve opt. prob.)
+T = 70 # Running time (how many times do we solve opt. prob.)
 spot_prices = np.fromfunction(price_func_exp, (N+T,)) # Spot prices for two days, 5 min intervals
-outdoor_temperature = 10 * np.ones(N)
+outdoor_temperature = 10 * np.ones(N+T)
 home_list = ['axel', 'seb']
-ref_temp = {'axel': 21*np.ones(N), 'seb': 24*np.ones(N)}
-
+ref_temp = {'axel': 21*np.ones(N+T), 'seb': 24*np.ones(N+T)} # Desired temperature for each home
 state_0_axel = {'wall': 9, 'room': 10, 'P_hp': 0}
 state_0_seb = {'wall': 14, 'room': 16, 'P_hp': 0}
 # state_0_kang = {'wall': 24, 'room': 28, 'P_hp': 0}
 state_0 = {'axel': state_0_axel, 'seb': state_0_seb, 'peak': 0}
-
-
-
-
+dual_variable = 50 * np.ones(N-1) # A variable for the power output of each time step
 
 #%%
     
 if __name__ == '__main__':
-    dmpc = DMPC(N, T, home_list, state_0, spot_prices, outdoor_temperature)
-    res = dmpc.run_full()
-    w = dmpc.state_dict['mpc_single_home'].w(res)
+    dmpc = DMPC(N, T, home_list, state_0, spot_prices, outdoor_temperature, ref_temp, dual_variable)
+    dmpc.run_full()
+    
+    '''
+    # %%
+    traj_dv = dmpc.state_dict['dual_variable']['traj_full']
+    x, y = np.meshgrid(np.arange(traj_dv.shape[1]), np.arange(traj_dv.shape[0]))
+    z = traj_dv
+    figdv, axdv = plt.subplots(subplot_kw={"projection": "3d"})
+    axdv.set_title('Dual variable values')
+    surf = axdv.plot_surface(x, y, z)
+    axdv.zaxis.set_rotate_label(False)
+    axdv.set_xlabel('MPC horizon step')
+    axdv.set_ylabel('Iteration')
+    axdv.set_zlabel('$\lambda$')
+
+    
+    figh, axh = plt.subplots()
+    for home, home_dict in zip(dmpc.home_list, dmpc.state_dict['homes'].values()):
+        axh.plot(home_dict['traj_full']['wall'], label=home)
+    axh.legend()
+    axh.set_title('Wall temperature [°C]')
+    
+    figr, axr = plt.subplots()
+    for home, home_dict in zip(dmpc.home_list, dmpc.state_dict['homes'].values()):
+        axr.plot(home_dict['traj_full']['room'], label=home)
+    axr.legend()
+    axr.set_title('Room temperature [°C]')
+    
+    figpw, axpw = plt.subplots()
+    for home, home_dict in zip(dmpc.home_list, dmpc.state_dict['homes'].values()):
+        axpw.plot(home_dict['traj_full']['P_hp'], label=home)
+    axpw.legend()
+    axpw.set_title('Heat pump power [W]')
+    
+    figpk, axpk = plt.subplots()
+    axpk.plot(dmpc.state_dict['peak']['traj_full'])
+    axpk.set_title('Peak state')
+    
+    plt.show()
+    
+    '''
+
+
+#%%
