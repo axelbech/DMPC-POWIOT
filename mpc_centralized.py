@@ -248,26 +248,27 @@ time = [x for x in range(T)]
 
 #%% 
 
-for idx, home in enumerate(homes):
-    # plt.figure(home)
-    fig,ax=plt.subplots(num=home)
-    ax.plot(time, traj_full[home]['Room'], label="T_room")
-    ax.set_xlabel("5 minute intervals")
-    ax.set_ylabel("Temperature [°C]")
-    ax.plot()
-    ax.plot(time, traj_full[home]['Wall'], label="T_wall")
-    ax.legend()
-
-    axPwr = ax.twinx()
-    axPwr.plot(time, traj_full[home]['P_hp'], label="P_hp", color="green")
-    axPwr.set_ylabel("Power [kW]")
-    axPwr.legend()
-    
-plt.show()
-
-# fig,ax=plt.subplots()
 # for idx, home in enumerate(homes):
-#     ax.plot(time, traj_full[home]['P_hp'], label=home)
-#     ax.set_ylabel("Power [kW]")
+#     # plt.figure(home)
+#     fig,ax=plt.subplots(num=home)
+#     ax.plot(time, traj_full[home]['Room'], label="T_room")
+#     ax.set_xlabel("5 minute intervals")
+#     ax.set_ylabel("Temperature [°C]")
+#     ax.plot()
+#     ax.plot(time, traj_full[home]['Wall'], label="T_wall")
 #     ax.legend()
+
+#     axPwr = ax.twinx()
+#     axPwr.plot(time, traj_full[home]['P_hp'], label="P_hp", color="green")
+#     axPwr.set_ylabel("Power [kW]")
+#     axPwr.legend()
+    
 # plt.show()
+
+fig,ax=plt.subplots()
+for idx, home in enumerate(homes):
+    ax.plot(time, traj_full[home]['P_hp'], label=home)
+    ax.set_ylabel("Power [kW]")
+    ax.legend()
+ax.set_title('Power consumption, centralized approach')
+plt.show()
