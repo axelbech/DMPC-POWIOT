@@ -82,14 +82,22 @@ class MPC():
     
     def get_cost_funtion(self):
         J = 0
-        for home in self.homes:
-            for k in range(self.N - 1):
-                J += self.p['Weights', 'Energy'] * self.p['Price', k, 'spot_price'] * self.w['Input', k, home, 'P_hp']
+        # for home in self.homes:
+        #     for k in range(self.N - 1):
+        #         J += self.p['Weights', 'Energy'] * self.p['Price', k, 'spot_price'] * self.w['Input', k, home, 'P_hp']
+        #         J += self.p['Weights', 'Comfort'] * (self.w['State', k, home, 'Room'] - self.ref_temp[home])**2
+                
+        #     J += self.p['Weights', 'Comfort'] * (self.w['State', k+1, home, 'Room'] - self.ref_temp[home])**2 # Accounting for the last time step state
+        
+        # J += self.p['Weights', 'Peak'] * self.N * self.n_homes * self.w['Peak', -1]
+        for k in range(self.N):
+            for home in self.homes:
                 J += self.p['Weights', 'Comfort'] * (self.w['State', k, home, 'Room'] - self.ref_temp[home])**2
                 
-            J += self.p['Weights', 'Comfort'] * (self.w['State', k+1, home, 'Room'] - self.ref_temp[home])**2 # Accounting for the last time step state
-        
-        J += self.p['Weights', 'Peak'] * self.N * self.n_homes * self.w['Peak', -1]
+        for k in range(self.N - 1):
+            for home in self.homes:
+                J += self.p['Weights', 'Energy'] * self.p['Price', k, 'spot_price'] * self.w['Input', k, home, 'P_hp']
+            J += self.p['Weights', 'Peak'] * self.w['Peak', k]
         return J
     
     def get_constraints(self):
@@ -186,7 +194,7 @@ def price_func_exp(x):
             + 0.7 *np.exp(-((x-96-288)/40)**2) + np.exp(-((x-216-288)/60)**2))
 
 N = 288 # MPC horizon (how far it optimizes)
-T = 20 # Running time (how many times do we solve opt. prob.)
+T = 10 # Running time (how many times do we solve opt. prob.)
 spot_prices = np.fromfunction(price_func_exp, (N+T,)) # Spot prices for two days, 5 min intervals
 homes = ['axel', 'seb']
 ref_temp = {'axel': 21, 'seb': 24}

@@ -2,12 +2,18 @@ from casadi import *
 from casadi.tools import *
 
 from pickle import loads, dumps
-from concurrent.futures import ProcessPoolExecutor
+
+from time import time, sleep
+# from concurrent.futures import ProcessPoolExecutor
 
 class myClass():
+    # __slots__ = ('s','s1','solver')
     def __init__(self):
         self.s = struct_symMX([entry('x')])
-        # self.s_num = self.s(0)
+        # self.s0 = {'s0': self.s(15)}
+        self.s1 = self.s(1)
+        # self.s0 = [self.s(0)]
+        # self.d = DM(1337)
         self.solver = self.set_solver()
         
     def set_solver(self):
@@ -24,9 +30,6 @@ class myClass():
         s0 = c.s(3)
         lbw = 0
         ubw = 5
-        with ProcessPoolExecutor(max_workers=8) as executor:
-            future = executor.submit(self.solver, x0=s0, lbx=lbw, ubx=ubw)
-            print(future.result())
 
 
 
@@ -36,7 +39,9 @@ class myClass():
 
 if __name__ == '__main__':
     c = myClass()
-    c.execute_actions()
+    dumps(c)
+    loads(dumps(c))
+    # c.execute_actions()
     # print(loads(dumps(s0)))
     # with ProcessPoolExecutor() as executor:
     #     future = executor.submit(c.get_action,s0.master,lbw,ubw)

@@ -283,11 +283,6 @@ class DMPC_constant():
             dual_variable_last = copy(self.state_dict['dual_variable']['current_value'])
             iteration_difference = 1
             
-            for home in self.state_dict['homes'].values():
-                mpc_single_home.update_constraints(
-                    home['w0'], home['lbw'], home['ubw']
-                )
-
 
             w0_list = [self.state_dict['homes'][home]['w0'].master for home in self.home_list]
             
@@ -305,8 +300,7 @@ class DMPC_constant():
 
             iteration_difference = (np.abs(self.state_dict['dual_variable']['current_value'] - dual_variable_last)).mean()
             avg_value = np.average(self.state_dict['dual_variable']['current_value'])
-            print(f'Internal iteration number {numIt}, iteration difference = {iteration_difference}')
-            print(f'Average dual variable value: {avg_value}')
+            print(f'Internal iteration number {numIt}, iteration difference = {round(iteration_difference,5)}, average dual variable value: {round(avg_value,2)}')
             if iteration_difference < 0.01 or numIt >= 30:
                 return result_list
             
@@ -352,8 +346,7 @@ if __name__ == '__main__':
     plt.show()
     
     # %%
-    '''
-    traj_dv = dmpc.state_dict['dual_variable']['traj_full']
+    traj_dv = dmpc.state_dict['dual_variable']['traj_full'][:30]
     x, y = np.meshgrid(np.arange(traj_dv.shape[1]), np.arange(traj_dv.shape[0]))
     z = traj_dv
     figdv, axdv = plt.subplots(subplot_kw={"projection": "3d"})
@@ -363,8 +356,9 @@ if __name__ == '__main__':
     axdv.set_xlabel('MPC horizon step')
     axdv.set_ylabel('Iteration')
     axdv.set_zlabel('$\lambda$')
-
+    plt.show()
     
+    '''
     figh, axh = plt.subplots()
     for home, home_dict in zip(dmpc.home_list, dmpc.state_dict['homes'].values()):
         axh.plot(home_dict['traj_full']['wall'], label=home)

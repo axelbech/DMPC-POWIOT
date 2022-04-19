@@ -22,8 +22,14 @@ class MPC_single_home():
         self.solver = self.get_solver()
         
     def get_parameters_structure(self):
-        p_weights = struct_symMX([entry('energy'), entry('comfort')])
-        p_model = struct_symMX([entry('rho_out'), entry('rho_in'), entry('COP')])
+        p_weights = struct_symMX([
+            entry('energy'), 
+            entry('comfort')])
+        p_model = struct_symMX([
+            entry('rho_out'), 
+            entry('rho_in'), 
+            entry('COP')])
+        
         return struct_symMX([
                 entry('weights', struct=p_weights),
                 entry('model', struct=p_model),
@@ -41,17 +47,24 @@ class MPC_single_home():
         rho_out = MX.sym('rho_out')
         rho_in = MX.sym('rho_in')
         wall_plus = wall + rho_out * (OutTemp - wall) + rho_in * (room - wall)
-        wall_func = Function('wall_plus', [rho_out, rho_in, wall, room, OutTemp], [wall_plus])
+        wall_func = Function(
+            'wall_plus', [rho_out, rho_in, wall, room, OutTemp], [wall_plus]
+            )
 
         COP = MX.sym('COP')
         Pow = MX.sym('Pow')
         room_plus = room + rho_in * (wall - room) + COP * Pow
-        room_func = Function('room_plus', [rho_in, room, wall, COP, Pow], [room_plus])
+        room_func = Function(
+            'room_plus', [rho_in, room, wall, COP, Pow], [room_plus]
+            )
 
         return wall_func, room_func
 
     def get_decision_variables(self):
-        MPC_states = struct_symMX([entry('room'), entry('wall')])
+        MPC_states = struct_symMX([
+            entry('room'), 
+            entry('wall')
+            ])
         MPC_inputs = struct_symMX([entry('P_hp')])
 
         w = struct_symMX([
@@ -63,10 +76,12 @@ class MPC_single_home():
     def get_cost_funtion(self):
         J = 0
         for k in range(self.N): 
-            J += self.p['weights', 'comfort'] * (self.w['state', k, 'room'] - self.p['reference_temperature',k])**2
+            J += self.p['weights', 'comfort'] * (self.w['state', k, 'room']
+                                        - self.p['reference_temperature',k])**2
         
         for k in range(self.N - 1): # Input not defined for the last timestep
-            J += self.p['weights', 'energy'] * self.p['spot_price', k] * self.w['input', k, 'P_hp']
+            J += self.p['weights', 'energy'] * self.p['spot_price', k] \
+                * self.w['input', k, 'P_hp']
             J += self.p['dual_variable', k] * self.w['input', k, 'P_hp'] # From dual decomposition, dual_var like a power price
         
         return J
@@ -85,7 +100,9 @@ class MPC_single_home():
             out_temp = self.p['outdoor_temperature', k]
             
             wall_plus = self.wall_func(rho_out, rho_in, wall, room, out_temp)
-            room_plus = self.room_func(rho_in, room, wall, self.p['model', 'COP'], Pow)
+            room_plus = self.room_func(
+                rho_in, room, wall, self.p['model', 'COP'], Pow
+                )
             
             g.append(wall_plus - self.w['state', k+1, 'wall'])
             lbg.append(0)
@@ -98,7 +115,11 @@ class MPC_single_home():
     
     def get_solver(self):
         g, self.lbg, self.ubg = self.get_constraint_functions()
-        mpc_problem = {'f': self.get_cost_funtion(), 'x': self.w, 'g': vertcat(*(g)), 'p': self.p}
+        mpc_problem = {
+            'f': self.get_cost_funtion(),
+            'x': self.w, 'g': vertcat(*(g)), 
+            'p': self.p
+            }
         opts = {'ipopt.print_level':0, 'print_time':0}
         return nlpsol('solver', 'ipopt', mpc_problem, opts)
     
@@ -151,9 +172,10 @@ class MPC_peak_state():
 
     def get_cost_function(self):
         J = 0
-        J += self.n_homes * self.n_steps * self.p['weight'] * self.w['peak', -1]
+        # J += self.n_homes * self.n_steps * self.p['weight'] * self.w['peak', -1] # Old last state cost
         for k in range(self.n_steps):
             J -= self.p['dual_variable', k] * self.w['peak', k]
+            J += self.p['weight'] * self.w['peak', k] # Old last state cost
         return J
             
     def get_constraint_functions(self):
@@ -263,7 +285,7 @@ class DMPC():
         x = mpc_peak.w(0)
         x['peak', :] = state_0['peak']
 
-        traj_full = np.zeros(T)
+        traj_full = np.zeros((T,N-1))
         traj_full[0] = state_0['peak']
 
         state_dict['peak']['mpc'] = mpc_peak
@@ -290,26 +312,27 @@ class DMPC():
     
     def update_state_trajectory(self, result_list, result_peak, t):
         for res_home, home_dict in zip(result_list, self.state_dict['homes'].values()):
-            home_dict['x'] = res_home
             home_dict['traj_full']['room'][t] = res_home['state', 0, 'room']
             home_dict['traj_full']['wall'][t] = res_home['state', 0, 'wall']
             home_dict['traj_full']['P_hp'][t] = res_home['input', 0, 'P_hp']
             
-        self.state_dict['peak']['x'] = result_peak
-        self.state_dict['peak']['traj_full'][t] = result_peak['peak', 0]
-    
-    def update_dual_variable(self, t):
-        dual_update = np.zeros(self.N-1)
-        for home_dict in self.state_dict['homes'].values():
-            dual_update += np.array(vertcat(*home_dict['x']['input',:,'P_hp'])).flatten()
-        dual_update -= np.array(vertcat(*self.state_dict['peak']['x']['peak',:])).flatten()
+        self.state_dict['peak']['traj_full'][t] = np.array(vertcat(*result_peak['peak', :])).flatten()
         
-        self.state_dict['dual_variable']['current_value'] += dual_update
+    def update_dual_variable_trajectory(self, t):
         self.state_dict['dual_variable']['traj_full'][t] = self.state_dict['dual_variable']['current_value']
+    
+    # def update_dual_variable(self, t):
+    #     dual_update = np.zeros(self.N-1)
+    #     for home_dict in self.state_dict['homes'].values():
+    #         dual_update += np.array(vertcat(*home_dict['x']['input',:,'P_hp'])).flatten()
+    #     dual_update -= np.array(vertcat(*self.state_dict['peak']['x']['peak',:])).flatten()
         
-        for home_dict in self.state_dict['homes'].values():
-            home_dict['p_num']['dual_variable'] = list(self.state_dict['dual_variable']['current_value']) 
-        self.state_dict['peak']['p_num']['dual_variable'] = list(self.state_dict['dual_variable']['current_value']) 
+    #     self.state_dict['dual_variable']['current_value'] += dual_update
+    #     self.state_dict['dual_variable']['traj_full'][t] = self.state_dict['dual_variable']['current_value']
+        
+    #     for home_dict in self.state_dict['homes'].values():
+    #         home_dict['p_num']['dual_variable'] = list(self.state_dict['dual_variable']['current_value']) 
+    #     self.state_dict['peak']['p_num']['dual_variable'] = list(self.state_dict['dual_variable']['current_value']) 
     
     def run_full(self):
         
@@ -319,9 +342,16 @@ class DMPC():
         
         for t in range(1, self.T):
 
-            self.update_dual_variable(t)
-            self.repeat_single_step()
-            return
+            for home in self.state_dict['homes'].values():
+                mpc_single_home.update_constraints(
+                    home['w0'], home['lbw'], home['ubw']
+                )
+            mpc_peak.update_constraints(
+                peak_dict['w0'], peak_dict['lbw'], peak_dict['ubw']
+            )
+            # self.update_dual_variable(t)
+            result_list = self.repeat_single_step()
+            return result_list
         
             for home in self.state_dict['homes'].values():
                 mpc_single_home.prepare_MPC_action(
@@ -361,14 +391,20 @@ class DMPC():
         for res_home, home_dict in zip(result_list, self.state_dict['homes'].values()):
             home_dict['x'] = res_home
         self.state_dict['peak']['x'] = result_peak
+        
+    def update_w0(self, result_list, result_peak):
+        for res_home, home_dict in zip(result_list, self.state_dict['homes'].values()):
+            home_dict['w0'] = res_home
+        self.state_dict['peak']['w0'] = result_peak
     
-    def update_current_dual_variable(self):
+    def update_current_dual_variable(self, alpha):
         dual_update = np.zeros(self.N-1)
         for home_dict in self.state_dict['homes'].values():
             dual_update += np.array(vertcat(*home_dict['x']['input',:,'P_hp'])).flatten()
         dual_update -= np.array(vertcat(*self.state_dict['peak']['x']['peak',:])).flatten()
         
-        self.state_dict['dual_variable']['current_value'] += dual_update
+        self.state_dict['dual_variable']['current_value'] += alpha * dual_update
+        self.state_dict['dual_variable']['current_value'][self.state_dict['dual_variable']['current_value'] < 0] = 0 #round up negative numbers to 0
         
         for home_dict in self.state_dict['homes'].values():
             home_dict['p_num']['dual_variable'] = list(self.state_dict['dual_variable']['current_value']) 
@@ -386,19 +422,8 @@ class DMPC():
         numIt = 0
         while True:
             
-            
             dual_variable_last = copy(self.state_dict['dual_variable']['current_value'])
             iteration_difference = 1
-            
-            for home in self.state_dict['homes'].values():
-                mpc_single_home.update_initial_state(
-                    home['w0'], home['x'], self.N
-                )
-                
-
-            mpc_peak.prepare_action(
-                peak_dict['w0'], peak_dict['x'], mpc_peak.n_steps, peak_dict['lbw'], peak_dict['ubw']
-            )
             
             peak_future = self.executor.submit(
                 mpc_peak.solve_peak_problem, peak_dict['w0'].master, peak_dict['lbw'].master,
@@ -412,16 +437,19 @@ class DMPC():
             result_list = [self.state_dict['mpc_single_home'].w(x) for x in list(result_map)]
             result_peak = mpc_peak.w(peak_future.result())
 
+            self.update_w0(result_list, result_peak)
             self.update_state(result_list, result_peak)
                 
-            self.update_current_dual_variable()
+            alpha = 20 / sqrt(1+numIt)
+            self.update_current_dual_variable(alpha)
+            self.update_dual_variable_trajectory(numIt+1)
+            self.update_state_trajectory(result_list, result_peak, numIt+1)
 
-            iteration_difference = ((self.state_dict['dual_variable']['current_value'] - dual_variable_last)**2).mean()
+            iteration_difference = (np.abs(self.state_dict['dual_variable']['current_value'] - dual_variable_last)).mean()
             avg_value = np.average(self.state_dict['dual_variable']['current_value'])
-            print(f'Internal iteration number {numIt}, iteration difference = {iteration_difference}')
-            print(f'Average dual variable value: {avg_value}')
-            if iteration_difference < 0.1 or numIt >= 30:
-                break
+            print(f'Internal iteration number {numIt}, iteration difference = {round(iteration_difference,5)}, average dual variable value: {round(avg_value,2)}')
+            if iteration_difference < 0.01 or numIt >= 15:
+                return result_list
             
             numIt += 1
 
@@ -440,7 +468,7 @@ state_0_axel = {'wall': 9, 'room': 10, 'P_hp': 0}
 state_0_seb = {'wall': 14, 'room': 16, 'P_hp': 0}
 # state_0_kang = {'wall': 24, 'room': 28, 'P_hp': 0}
 state_0 = {'axel': state_0_axel, 'seb': state_0_seb, 'peak': 0}
-dual_variable = 50 * np.ones(N-1) # A variable for the power output of each time step
+dual_variable = 5 * np.ones(N-1) # A variable for the power output of each time step
 
 #%%
     
@@ -448,8 +476,22 @@ if __name__ == '__main__':
     dmpc = DMPC(N, T, home_list, state_0, spot_prices, outdoor_temperature, ref_temp, dual_variable)
     dmpc.run_full()
     
-    '''
+    result_list = dmpc.run_full()
+    # print(dmpc.state_dict['dual_variable']['traj_full'][:15,:5])
+    axel = result_list[0]
+    seb = result_list[1]
+    axel = np.array(vertcat(*axel['input', :, 'P_hp'])).flatten()
+    seb = np.array(vertcat(*seb['input', :, 'P_hp'])).flatten()
+    figa, axa = plt.subplots()
+    axa.plot(axel, label='axel')
+    axa.plot(seb, label='seb')
+    axa.set_title('Total power consumption [kW]')
+    axa.set_xlabel('Time step (5 minute intervals)')
+    axa.legend()
+    plt.show()
+    
     # %%
+    '''
     traj_dv = dmpc.state_dict['dual_variable']['traj_full']
     x, y = np.meshgrid(np.arange(traj_dv.shape[1]), np.arange(traj_dv.shape[0]))
     z = traj_dv

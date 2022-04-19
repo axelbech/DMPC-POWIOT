@@ -1,230 +1,686 @@
-#%%
+from weakref import ref
 from casadi import *
 from casadi.tools import *
-import numpy as np
-import matplotlib.pyplot as plt
-
-import time
+from concurrent.futures import ProcessPoolExecutor
 
 class MPC():
-    def __init__(self, N, COP = 3.5, out_temp = 10, ref_temp = 23, P_max = 1.5):
+    def __init__(self, N):
         self.N = N
-        self.COP = COP
-        self.out_temp = out_temp
-        self.ref_temp = ref_temp
-        self.P_max = P_max
-        
-        self.WallFunc, self.RoomFunc = self.get_dynamics_functions()
-        
+
         self.w = self.get_decision_variables()
-        self.n_states = self.w['State', 0].numel()
+        self.p = self.get_parameters_structure()
         
         self.w0 = self.w(0)
-        self.p = self.get_parameters_structure()
-        self.J = self.get_cost_funtion()
-        self.g, self.lbg, self.ubg, self.lbw, self.ubw = self.get_constraints()
+        self.lbw = self.w(-inf)
+        self.ubw = self.w(inf)
+        self.w_opt = self.w(0)
+        self.p_num = self.p(0)
         
         self.solver = self.get_solver()
         
     def get_parameters_structure(self):
-        p_weights = struct_symMX([entry('Energy'), entry('Comfort'), entry('Peak')])
-        p_model = struct_symMX([entry('rho_out'), entry('rho_in')])
-        p_price = struct_symMX([entry('spot_price')])
+        return None
+
+    def get_decision_variables(self):
+        return None
+    
+    def get_cost_funtion(self):
+        return None
+    
+    def get_constraint_functions(self):
+        return None
+    
+    def get_solver(self):
+        g, self.lbg, self.ubg = self.get_constraint_functions()
+        mpc_problem = {
+            'f': self.get_cost_funtion(), 
+            'x': self.w, 
+            'g': vertcat(*(g)), 
+            'p': self.p
+            }
+        opts = {'ipopt.print_level':0, 'print_time':0}
+        return nlpsol('solver', 'ipopt', mpc_problem, opts)
+    
+    def get_MPC_action(self):
+        """Completes optimization for one MPC step
+
+        Returns:
+            x (list): optimized state variables
+            f (list): optimal cost function value
+        """
+        solution = self.solver(
+            x0=self.w0, 
+            lbx=self.lbw,
+            ubx=self.ubw,
+            lbg=self.lbg, 
+            ubg=self.ubg, 
+            p=self.p_num
+            )
+        # print(f'home action PID: {os.getpid()}')
+        return solution['x'], solution['f']
+    
+    
+    def update_parameters(self, **kwargs):
+        """Modulary updates parameters, assuming they are already of the right
+        size.
+        
+        """
+        for key, value in kwargs.items():
+            self.p_num[key] = list(value) 
+            
+            
+class MPCSingleHomeDistributedInherited(MPC):
+        
+    def get_parameters_structure(self):
+        p_weights = struct_symMX([
+            entry('energy'), 
+            entry('comfort')
+            ])
+        p_model = struct_symMX([
+            entry('rho_out'), 
+            entry('rho_in'),
+            entry('COP')])
+        
         return struct_symMX([
-                entry('Weights', struct=p_weights),
-                entry('Model', struct=p_model),
-                entry('Price', struct=p_price, repeat=self.N)
+                entry('weights', struct=p_weights),
+                entry('model', struct=p_model),
+                entry('outdoor_temperature', repeat=self.N),
+                entry('reference_temperature', repeat=self.N),
+                entry('spot_price', repeat=self.N-1),
+                entry('dual_variable', repeat=self.N-1)
             ])
         
     def get_dynamics_functions(self):
-        Wall = MX.sym('Wall')
-        Room = MX.sym('Room')
+        wall = MX.sym('wall')
+        room = MX.sym('room')
         OutTemp = MX.sym('OutTemp')
 
         rho_out = MX.sym('rho_out')
         rho_in = MX.sym('rho_in')
-        WallPlus = Wall + rho_out * (OutTemp - Wall) + rho_in * (Room - Wall)
-        WallFunc = Function('WallPlus', [rho_out, rho_in, Wall, Room, OutTemp], [WallPlus])
+        wall_plus = wall + rho_out * (OutTemp - wall) + rho_in * (room - wall)
+        wall_func = Function(
+            'wall_plus', 
+            [rho_out, rho_in, wall, room, OutTemp],
+            [wall_plus]
+            )
 
         COP = MX.sym('COP')
         Pow = MX.sym('Pow')
-        RoomPlus = Room + rho_in * (Wall - Room) + COP * Pow
-        RoomFunc = Function('RoomPlus', [rho_in, Room, Wall, COP, Pow], [RoomPlus])
+        room_plus = room + rho_in * (wall - room) + COP * Pow
+        room_func = Function(
+            'room_plus',
+            [rho_in, room, wall, COP, Pow],
+            [room_plus]
+            )
 
-        return WallFunc, RoomFunc
+        return wall_func, room_func
 
     def get_decision_variables(self):
-        MPCstates = struct_symMX([entry('Room'), entry('Wall'), entry('Peak')])
-        MPCinputs = struct_symMX([entry('P_hp')])
+        MPC_states = struct_symMX([entry('room'), entry('wall')])
+        MPC_inputs = struct_symMX([entry('P_hp')])
 
         w = struct_symMX([
-        entry('State', struct=MPCstates, repeat=self.N),
-        entry('Input', struct=MPCinputs, repeat=self.N - 1),
+        entry('state', struct=MPC_states, repeat=self.N),
+        entry('input', struct=MPC_inputs, repeat=self.N - 1)
         ])
         return w
     
     def get_cost_funtion(self):
         J = 0
-        for k in range(self.N - 1):
-            J += self.p['Weights', 'Energy'] * self.p['Price', k, 'spot_price'] * self.w['Input', k, 'P_hp']
-            J += self.p['Weights', 'Comfort'] * (self.w['State', k, 'Room'] - self.ref_temp)**2
-            
-        J += self.p['Weights', 'Comfort'] * (self.w['State', k+1, 'Room'] - self.ref_temp)**2 # Accounting for the last time step state
+        for k in range(self.N): 
+            J += self.p['weights', 'comfort'] * \
+            (self.w['state', k, 'room'] - self.p['reference_temperature',k])**2
         
-        J += self.p['Weights', 'Peak'] * self.N * self.w['State', -1, 'Peak']
+        for k in range(self.N - 1): # Input not defined for the last timestep
+            J += self.p['weights', 'energy'] * self.p['spot_price', k]\
+                * self.w['input', k, 'P_hp']
+            J += self.p['dual_variable', k] * self.w['input', k, 'P_hp'] # From dual decomposition, dual_var like a power price
+        
         return J
     
-    def get_constraints(self):
-        rho_out = self.p['Model', 'rho_out']
-        rho_in = self.p['Model', 'rho_in']
+    def get_constraint_functions(self):
+        rho_out = self.p['model', 'rho_out']
+        rho_in = self.p['model', 'rho_in']
         g = []
         lbg = []
         ubg = []
+        self.wall_func, self.room_func = self.get_dynamics_functions()
+        
         for k in range(self.N - 1):
-            Wall = self.w['State', k, 'Wall']
-            Room = self.w['State', k, 'Room']
-            Pow = self.w['Input', k, 'P_hp']
+            wall = self.w['state', k, 'wall']
+            room = self.w['state', k, 'room']
+            Pow = self.w['input', k, 'P_hp']
+            out_temp = self.p['outdoor_temperature', k]
             
-            WallPlus = self.WallFunc(rho_out, rho_in, Wall, Room, self.out_temp)
-            RoomPlus = self.RoomFunc(rho_in, Room, Wall, self.COP, Pow)
+            wall_plus = self.wall_func(
+                rho_out, 
+                rho_in, 
+                wall, 
+                room, 
+                out_temp
+                )
+            room_plus = self.room_func(
+                rho_in,
+                room,
+                wall,
+                self.p['model', 'COP'],
+                Pow
+                )
             
-            g.append(WallPlus - self.w['State', k+1, 'Wall'])
+            g.append(wall_plus - self.w['state', k+1, 'wall'])
             lbg.append(0)
             ubg.append(0)
-            g.append(RoomPlus - self.w['State', k+1, 'Room'])
+            g.append(room_plus - self.w['state', k+1, 'room'])
             lbg.append(0)
             ubg.append(0)
+                
+        return g, lbg, ubg
+    
+    
+    def dummy_func(self):
+        print('starting func')
+        for i in range(10000):
+            self.w0['state', 0, 'room'] = 19
+            self.w0['state', 0, 'room'] = 20
+        print('finishing func')
+        return self.w0
+    
+    
+    @staticmethod
+    def update_initial_state(w0, w, N):
+        """Using the result state from an optimization w at time t, update the
+        start state w0 for time t+1
+        
+        """
+        w0['state', :N-1] = w['state', 1:]
+        w0['state', -1] = w['state', -1]
+        
+        w0['input', :N-2] = w['input', 1:]
+        w0['input', -1] = w['input', -1]
+        
+    @staticmethod
+    def update_constraints(w0, lbw, ubw):
+        """The first state should not change
+        
+        """
+        lbw['state', 0, 'wall'] = w0['state', 0, 'wall']
+        ubw['state', 0, 'wall'] = w0['state', 0, 'wall']
+        
+        lbw['state', 0, 'room'] = w0['state', 0, 'room']
+        ubw['state', 0, 'room'] = w0['state', 0, 'room']
+        
+        lbw['input', 0, 'P_hp'] = w0['input', 0, 'P_hp']
+        ubw['input', 0, 'P_hp'] = w0['input', 0, 'P_hp']
+        
+    @classmethod   
+    def prepare_MPC_action(cls, w0, w, N, lbw, ubw):
+        cls.update_initial_state(w0, w, N)
+        cls.update_constraints(w0, lbw, ubw)
+
+
+class MPCSingleHome():
+    def __init__(self, N, P_max = 1.5):
+        self.N = N
+        self.P_max = P_max
+
+        self.wall_func, self.room_func = self.get_dynamics_functions()
+        self.w = self.get_decision_variables()
+        self.p = self.get_parameters_structure()
+        
+        self.solver = self.get_solver()
+        
+    def get_parameters_structure(self):
+        p_weights = struct_symMX([
+            entry('energy'), 
+            entry('comfort')
+            ])
+        p_model = struct_symMX([
+            entry('rho_out'), 
+            entry('rho_in'),
+            entry('COP')])
+        
+        return struct_symMX([
+                entry('weights', struct=p_weights),
+                entry('model', struct=p_model),
+                entry('outdoor_temperature', repeat=self.N),
+                entry('reference_temperature', repeat=self.N),
+                entry('spot_price', repeat=self.N-1)
+            ])
+        
+    def get_dynamics_functions(self):
+        wall = MX.sym('wall')
+        room = MX.sym('room')
+        OutTemp = MX.sym('OutTemp')
+
+        rho_out = MX.sym('rho_out')
+        rho_in = MX.sym('rho_in')
+        wall_plus = wall + rho_out * (OutTemp - wall) + rho_in * (room - wall)
+        wall_func = Function(
+            'wall_plus', 
+            [rho_out, rho_in, wall, room, OutTemp],
+            [wall_plus]
+            )
+
+        COP = MX.sym('COP')
+        Pow = MX.sym('Pow')
+        room_plus = room + rho_in * (wall - room) + COP * Pow
+        room_func = Function(
+            'room_plus',
+            [rho_in, room, wall, COP, Pow],
+            [room_plus]
+            )
+
+        return wall_func, room_func
+
+    def get_decision_variables(self):
+        MPC_states = struct_symMX([entry('room'), entry('wall')])
+        MPC_inputs = struct_symMX([entry('P_hp')])
+
+        w = struct_symMX([
+        entry('state', struct=MPC_states, repeat=self.N),
+        entry('input', struct=MPC_inputs, repeat=self.N - 1)
+        ])
+        return w
+    
+    def get_cost_funtion(self):
+        J = 0
+        for k in range(self.N): 
+            J += self.p['weights', 'comfort'] * \
+            (self.w['state', k, 'room'] - self.p['reference_temperature',k])**2
+        
+        for k in range(self.N - 1): # Input not defined for the last timestep
+            J += self.p['weights', 'energy'] * self.p['spot_price', k]\
+                * self.w['input', k, 'P_hp']
+        
+        return J
+    
+    def get_constraint_functions(self):
+        rho_out = self.p['model', 'rho_out']
+        rho_in = self.p['model', 'rho_in']
+        g = []
+        lbg = []
+        ubg = []
+        
+        for k in range(self.N - 1):
+            wall = self.w['state', k, 'wall']
+            room = self.w['state', k, 'room']
+            Pow = self.w['input', k, 'P_hp']
+            out_temp = self.p['outdoor_temperature', k]
             
-            g.append(self.w['State', k+1, 'Peak'] - self.w['State', k, 'Peak'])
+            wall_plus = self.wall_func(
+                rho_out, 
+                rho_in, 
+                wall, 
+                room, 
+                out_temp
+                )
+            room_plus = self.room_func(
+                rho_in,
+                room,
+                wall,
+                self.p['model', 'COP'],
+                Pow
+                )
+            
+            g.append(wall_plus - self.w['state', k+1, 'wall'])
             lbg.append(0)
-            ubg.append(inf)
-            g.append(self.w['State', k, 'Peak'] - self.w['Input', k, 'P_hp'])
+            ubg.append(0)
+            g.append(room_plus - self.w['state', k+1, 'room'])
             lbg.append(0)
-            ubg.append(inf)
-            
-        lbw = self.w(-inf)
-        ubw = self.w(inf)
-        lbw['Input', 1::, "P_hp"] = 0
-        ubw['Input', 1::, "P_hp"] = self.P_max
-            
-        return g, lbg, ubg, lbw, ubw
+            ubg.append(0)
+                
+        return g, lbg, ubg
     
     def get_solver(self):
-        mpc_problem = {'f': self.J, 'x': self.w, 'g': vertcat(*(self.g)), 'p': self.p}
+        g, self.lbg, self.ubg = self.get_constraint_functions()
+        mpc_problem = {
+            'f': self.get_cost_funtion(), 
+            'x': self.w, 
+            'g': vertcat(*(g)), 
+            'p': self.p
+            }
         opts = {'ipopt.print_level':0, 'print_time':0}
         return nlpsol('solver', 'ipopt', mpc_problem, opts)
     
-    def update_initial_state(self, x_0):
-        N = self.N
-        n = self.n_states
-        t_room = x_0[:n*N:n]
-        t_wall = x_0[1:n*N:n]
-        s_peak = x_0[2:n*N:n]
-        P_hp = x_0[n*N:]
-        
-        for i in range(N-1):
-            self.w0['State', i, 'Wall'] = t_wall[i+1]
-            self.w0['State', i, 'Room'] = t_room[i+1]
-            self.w0['State', i, 'Peak'] = s_peak[i+1]
-        self.w0['State', -1, 'Wall'] = t_wall[-1]
-        self.w0['State', -1, 'Room'] = t_room[-1]
-        self.w0['State', -1, 'Peak'] = s_peak[-1]
-        
-        for i in range(N-2):
-            self.w0['Input', i, 'P_hp'] = P_hp[i+1]
-        self.w0['Input', -1, 'P_hp'] = P_hp[-1]
-        
-    def update_constraints(self):
-        self.lbw['State', 0, 'Wall'] = self.w0['State', 0, 'Wall']
-        self.ubw['State', 0, 'Wall'] = self.w0['State', 0, 'Wall']
-        
-        self.lbw['State', 0, 'Room'] = self.w0['State', 0, 'Room']
-        self.ubw['State', 0, 'Room'] = self.w0['State', 0, 'Room']
-        
-        self.lbw['State', 0, 'Peak'] = self.w0['State', 0, 'Peak']
-        self.ubw['State', 0, 'Peak'] = self.w0['State', 0, 'Peak']
-        
-        self.lbw['Input', 0, 'P_hp'] = self.w0['Input', 0, 'P_hp']
-        self.ubw['Input', 0, 'P_hp'] = self.w0['Input', 0, 'P_hp']
-        
-    def get_MPC_action(self, p_num, x_0):
-        then = time.time()
-        
-        self.update_initial_state(x_0)
-        self.update_constraints()
-
-        solution = self.solver(x0=self.w0, lbx=self.lbw, ubx=self.ubw,
+    def get_MPC_action(self, w0, lbw, ubw, p_num):
+        solution = self.solver(x0=w0, lbx=lbw, ubx=ubw,
                                lbg=self.lbg, ubg=self.ubg, p=p_num)
-        
-        now = time.time()
-        
-        print("Time elapsed = ", now-then, end="  ")
-
+        print(f'home action PID: {os.getpid()}')
         return solution['x']
     
+    @staticmethod
+    def update_initial_state(w0, w, N):
+        """Using the result state from an optimization w at time t, update the
+        start state w0 for time t+1
+        
+        """
+        w0['state', :N-1] = w['state', 1:]
+        w0['state', -1] = w['state', -1]
+        
+        w0['input', :N-2] = w['input', 1:]
+        w0['input', -1] = w['input', -1]
+        
+    @staticmethod
+    def update_constraints(w0, lbw, ubw):
+        """The first state should not change, enforced with constraints"""
+        lbw['state', 0, 'wall'] = w0['state', 0, 'wall']
+        ubw['state', 0, 'wall'] = w0['state', 0, 'wall']
+        
+        lbw['state', 0, 'room'] = w0['state', 0, 'room']
+        ubw['state', 0, 'room'] = w0['state', 0, 'room']
+        
+        lbw['input', 0, 'P_hp'] = w0['input', 0, 'P_hp']
+        ubw['input', 0, 'P_hp'] = w0['input', 0, 'P_hp']
+        
+    @classmethod   
+    def prepare_MPC_action(cls, w0, w, N, lbw, ubw):
+        cls.update_initial_state(w0, w, N)
+        cls.update_constraints(w0, lbw, ubw)
 
-                
-#%%
 
-def price_func_exp(x):
-    return (1 + 0.7 *np.exp(-((x-96)/40)**2) + np.exp(-((x-216)/60)**2)
-            + 0.7 *np.exp(-((x-96-288)/40)**2) + np.exp(-((x-216-288)/60)**2))
+class MPCSingleHomeDistributed():
+    def __init__(self, N, P_max = 1.5):
+        self.N = N
+        self.P_max = P_max
 
-N = 10 # MPC horizon (how far it optimizes)
-T = 10 # Running time (how many times do we solve opt. prob.)
-spot_prices = np.fromfunction(price_func_exp, (N+T,)) # Spot prices for two days, 5 min intervals
+        self.wall_func, self.room_func = self.get_dynamics_functions()
+        self.w = self.get_decision_variables()
+        self.p = self.get_parameters_structure()
+        
+        self.w0 = self.w(0)
+        self.w_opt = self.w(0)
+        self.p_num = self.p(0)
+        
+        self.solver = self.get_solver()
+        
+    def get_parameters_structure(self):
+        p_weights = struct_symMX([
+            entry('energy'), 
+            entry('comfort')
+            ])
+        p_model = struct_symMX([
+            entry('rho_out'), 
+            entry('rho_in'),
+            entry('COP')])
+        
+        return struct_symMX([
+                entry('weights', struct=p_weights),
+                entry('model', struct=p_model),
+                entry('outdoor_temperature', repeat=self.N),
+                entry('reference_temperature', repeat=self.N),
+                entry('spot_price', repeat=self.N-1),
+                entry('dual_variable', repeat=self.N-1)
+            ])
+        
+    def get_dynamics_functions(self):
+        wall = MX.sym('wall')
+        room = MX.sym('room')
+        OutTemp = MX.sym('OutTemp')
 
-state_0 = {'Wall': 13, 'Room': 15, 'Peak': 0, 'P_hp': 0}
-n = 3 # Number of states
-x_0 = np.zeros(n*N + (N-1))
-x_0[:n*N:n] = state_0['Room']
-x_0[1:n*N:n] = state_0['Wall']
-x_0[2:n*N:n] = state_0['Peak']
-x_0[n*N:] = state_0['P_hp']
+        rho_out = MX.sym('rho_out')
+        rho_in = MX.sym('rho_in')
+        wall_plus = wall + rho_out * (OutTemp - wall) + rho_in * (room - wall)
+        wall_func = Function(
+            'wall_plus', 
+            [rho_out, rho_in, wall, room, OutTemp],
+            [wall_plus]
+            )
 
-mpc = MPC(N)
+        COP = MX.sym('COP')
+        Pow = MX.sym('Pow')
+        room_plus = room + rho_in * (wall - room) + COP * Pow
+        room_func = Function(
+            'room_plus',
+            [rho_in, room, wall, COP, Pow],
+            [room_plus]
+            )
 
-p_num = mpc.p(0)
+        return wall_func, room_func
 
-p_num['Weights', 'Energy'] = 100
-p_num['Weights', 'Comfort'] = 1
-p_num['Weights', 'Peak'] = 0.5 # 5
-p_num['Model', 'rho_out'] = 0.18
-p_num['Model', 'rho_in'] = 0.37
-#%%
-t_wall_full = [state_0['Wall']]
-t_room_full = [state_0['Room']]
-P_hp_full = [state_0['P_hp']]
-s_peak_full = [state_0['Peak']]
+    def get_decision_variables(self):
+        MPC_states = struct_symMX([entry('room'), entry('wall')])
+        MPC_inputs = struct_symMX([entry('P_hp')])
 
-print("Starting calculations with horizon length =", N)
-for t in range(T-1):
-    for i in range(N):
-        p_num['Price', i, 'spot_price'] = spot_prices[t+i]
-    x = mpc.get_MPC_action(p_num, x_0)
-    t_room_full.append(x[3])
-    t_wall_full.append(x[4])
-    s_peak_full.append(x[5])
-    P_hp_full.append(x[n*N + 1])
+        w = struct_symMX([
+        entry('state', struct=MPC_states, repeat=self.N),
+        entry('input', struct=MPC_inputs, repeat=self.N - 1)
+        ])
+        return w
     
-    x_0 = x
-    print("Iteration",t+1,"/",T,end="\r")
+    def get_cost_funtion(self):
+        J = 0
+        for k in range(self.N): 
+            J += self.p['weights', 'comfort'] * \
+            (self.w['state', k, 'room'] - self.p['reference_temperature',k])**2
+        
+        for k in range(self.N - 1): # Input not defined for the last timestep
+            J += self.p['weights', 'energy'] * self.p['spot_price', k]\
+                * self.w['input', k, 'P_hp']
+            J += self.p['dual_variable', k] * self.w['input', k, 'P_hp'] # From dual decomposition, dual_var like a power price
+        
+        return J
+    
+    def get_constraint_functions(self):
+        rho_out = self.p['model', 'rho_out']
+        rho_in = self.p['model', 'rho_in']
+        g = []
+        lbg = []
+        ubg = []
+        
+        for k in range(self.N - 1):
+            wall = self.w['state', k, 'wall']
+            room = self.w['state', k, 'room']
+            Pow = self.w['input', k, 'P_hp']
+            out_temp = self.p['outdoor_temperature', k]
+            
+            wall_plus = self.wall_func(
+                rho_out, 
+                rho_in, 
+                wall, 
+                room, 
+                out_temp
+                )
+            room_plus = self.room_func(
+                rho_in,
+                room,
+                wall,
+                self.p['model', 'COP'],
+                Pow
+                )
+            
+            g.append(wall_plus - self.w['state', k+1, 'wall'])
+            lbg.append(0)
+            ubg.append(0)
+            g.append(room_plus - self.w['state', k+1, 'room'])
+            lbg.append(0)
+            ubg.append(0)
+                
+        return g, lbg, ubg
+    
+    def get_solver(self):
+        g, self.lbg, self.ubg = self.get_constraint_functions()
+        mpc_problem = {
+            'f': self.get_cost_funtion(), 
+            'x': self.w, 
+            'g': vertcat(*(g)), 
+            'p': self.p
+            }
+        opts = {'ipopt.print_level':0, 'print_time':0}
+        return nlpsol('solver', 'ipopt', mpc_problem, opts)
+    
+    def get_MPC_action(self, w0, lbw, ubw, p_num):
+        solution = self.solver(x0=w0, lbx=lbw, ubx=ubw,
+                               lbg=self.lbg, ubg=self.ubg, p=p_num)
+        print(f'home action PID: {os.getpid()}')
+        return solution['x']
+    
+    def dummy_func(self):
+        print('starting func')
+        for i in range(10000):
+            self.w0['state', 0, 'room'] = 19
+            self.w0['state', 0, 'room'] = 20
+        print('finishing func')
+        return self.w0
+    
+    def update_parameters(self, **kwargs):
+        """Modulary updates parameters, assuming they are already of the right
+        size.
+        
+        """
+        for key, value in kwargs.items():
+            self.p_num[key] = list(value) 
+    
+    
+    @staticmethod
+    def update_initial_state(w0, w, N):
+        """Using the result state from an optimization w at time t, update the
+        start state w0 for time t+1
+        
+        """
+        w0['state', :N-1] = w['state', 1:]
+        w0['state', -1] = w['state', -1]
+        
+        w0['input', :N-2] = w['input', 1:]
+        w0['input', -1] = w['input', -1]
+        
+    @staticmethod
+    def update_constraints(w0, lbw, ubw):
+        """The first state should not change
+        
+        """
+        lbw['state', 0, 'wall'] = w0['state', 0, 'wall']
+        ubw['state', 0, 'wall'] = w0['state', 0, 'wall']
+        
+        lbw['state', 0, 'room'] = w0['state', 0, 'room']
+        ubw['state', 0, 'room'] = w0['state', 0, 'room']
+        
+        lbw['input', 0, 'P_hp'] = w0['input', 0, 'P_hp']
+        ubw['input', 0, 'P_hp'] = w0['input', 0, 'P_hp']
+        
+    @classmethod   
+    def prepare_MPC_action(cls, w0, w, N, lbw, ubw):
+        cls.update_initial_state(w0, w, N)
+        cls.update_constraints(w0, lbw, ubw)
+        
+        
+class MPCPeakState():
+    def __init__(self, N, P_max=1.5):
+        self.N = N
+        # self.n_homes = n_homes
+        self.P_max = P_max
+        
+        self.w = self.get_decision_variables()
+        self.p = self.get_parameters_structure()
+        
+        self.solver = self.get_solver()
+        
+    def get_decision_variables(self):
+        return struct_symMX([entry('peak', repeat=self.N-1)])
+    
+    def get_parameters_structure(self):
+        return struct_symMX([
+            entry('weight'), 
+            entry('dual_variable', repeat=self.N-1)
+            ])
 
-time = [x for x in range(T)]
+    def get_cost_function(self):
+        J = 0
+        # J += self.n_homes * self.n_steps * self.p['weight'] * self.w['peak', -1] # Old last state cost
+        for k in range(self.N-1):
+            J -= self.p['dual_variable', k] * self.w['peak', k]
+            J += self.p['weight'] * self.w['peak', k] # Old last state cost
+        return J
+            
+    def get_constraint_functions(self):
+        g = []
+        lbg = []
+        ubg = []
+        for k in range(self.N - 2):
+            g.append(self.w['peak', k+1] - self.w['peak', k])
+            lbg.append(0)
+            ubg.append(inf)
+        return g, lbg, ubg
+    
+    def get_solver(self):
+        g, self.lbg, self.ubg = self.get_constraint_functions()
+        mpc_problem = {
+            'f': self.get_cost_function(), 
+            'x': self.w, 
+            'g': vertcat(*(g)),
+            'p': self.p
+            }
+        opts = {'ipopt.print_level':0, 'print_time':0}
+        return nlpsol('solver', 'ipopt', mpc_problem, opts)
+    
+    def solve_peak_problem(self, w0, lbw, ubw, p_num):
+        solution = self.solver(x0=w0, lbx=lbw, ubx=ubw,
+                                lbg=self.lbg, ubg=self.ubg, p=p_num)
+        print(f'peak action PID: {os.getpid()}')
+        return solution['x']
+    
+    @staticmethod
+    def update_initial_state(w0, w, n_steps):
+        w0['peak', :n_steps-1] = w['peak', 1:]
+        w0['peak', -1] = w['peak', -1]
+        
+    @staticmethod
+    def update_constraints(w0, lbw, ubw):
+        lbw['peak', 0] = w0['peak', 0]
+        ubw['peak', 0] = w0['peak', 0] 
+        
+    @classmethod 
+    def prepare_action(cls, w0, w, n_steps, lbw, ubw):
+        cls.update_initial_state(w0, w, n_steps)
+        cls.update_constraints(w0, lbw, ubw)
+        
 
-#%%
-
-fig,ax=plt.subplots()
-ax.plot(time, t_room_full, label="T_room")
-ax.set_xlabel("5 minute intervals")
-ax.set_ylabel("Temperature [°C]")
-ax.plot()
-ax.plot(time, t_wall_full, label="T_wall")
-ax.legend()
-
-axPwr = ax.twinx()
-axPwr.plot(time, P_hp_full, label="P_hp", color="green")
-axPwr.set_ylabel("Power [kW]")
-axPwr.legend()
-plt.show()
-# %%
+if __name__ == '__main__':
+    from time import time, sleep
+    from pickle import loads, dumps
+    from concurrent.futures import ProcessPoolExecutor
+    N = 10
+    c = MPCSingleHomeDistributed(N=N)
+    d = MPCSingleHomeDistributed(N=N)
+    reference_temperature = [23 for _ in range(N)]
+    outdoor_temperature = [10 for _ in range(N)]
+    spot_price = [-(x-N/2)**2 + 50 for x in range(N-1)]
+    dual_variable = spot_price
+    
+    i = MPCSingleHomeDistributedInherited(N=N)
+    i.update_parameters(spot_price=spot_price)
+    g = dumps(i)
+    k = loads(dumps(i))
+    print(k.p_num.master)
+    
+    # c.update_parameters(
+    #     reference_temperature=reference_temperature,
+    #     outdoor_temperature=outdoor_temperature,
+    #     spot_price=spot_price,
+    #     dual_variable=dual_variable
+    # )
+    # d.update_parameters(
+    #     reference_temperature=reference_temperature,
+    #     outdoor_temperature=outdoor_temperature,
+    #     spot_price=spot_price,
+    #     dual_variable=dual_variable
+    # )
+    # g = dumps(c)
+    # g = dumps(d)
+    # with ProcessPoolExecutor() as executor:
+    #     print('### First batch ###')
+    #     result_map = executor.map(MPCSingleHomeDistributed.dummy_func, [c,d], chunksize=8)
+    #     result_map = executor.map(MPCSingleHomeDistributed.dummy_func, [c,d], chunksize=8)
+    #     result_map = executor.map(MPCSingleHomeDistributed.dummy_func, [c,d], chunksize=8)
+        
+    #     c.w0['input', 0, 'P_hp'] = 1
+        
+    #     sleep(5)
+    #     print('### Second batch ###')
+    #     result_map = executor.map(MPCSingleHomeDistributed.dummy_func, [c,d], chunksize=8)
+    #     result_map = executor.map(MPCSingleHomeDistributed.dummy_func, [c,d], chunksize=8)
+    #     result_map = executor.map(MPCSingleHomeDistributed.dummy_func, [c,d], chunksize=8)
+    #     # result_list = list(result_map)
+    #     # w0c = result_list[0]
+    #     # w0d = result_list[1]
+    #     # print(w0c.master)
+    #     # print(w0d.master)
