@@ -3,34 +3,47 @@ from casadi import *
 from casadi.tools import *
 import numpy as np
 
+from copy import copy
+
 class MPC():
     """Model predictive control template for model predictive control using 
     CasADi symbolics and IPOPT for optimization
     
     """
-    def __init__(self, N, name):
+    def __init__(self, N: int, name: str, params: dict):
         """Create an MPC object
 
         Args:
             N (int): optimization window length
             name (str): instance name for parameter indexing
+            params (dict): initial states, bounds, nlp parameters
         """
         self.N = N
         self.name = name
+        self.params = params
 
         self.w = self.get_decision_variables()
         self.p = self.get_parameters_structure()
         
-        self.w0 = self.w(0)
-        self.lbw = self.w(-inf)
-        self.ubw = self.w(inf)
-        self.w_opt = self.w(0)
+        self.w0 = self.get_initial_state()
+        self.lbw, self.ubw = self.get_state_bounds()
+        self.w_opt = copy(self.w)(0)
         self.p_num = self.p(0)
         
         self.solver = self.get_solver()
         
         self.traj_full = self.get_trajectory_structure()
         
+        dumps(self) # Another quick fix for serializability
+        
+    def get_decision_variables(self):
+        """Builds the decision variable
+        
+        Returns:
+            w (struct_symMX): decision variable
+        """
+        pass
+    
     def get_parameters_structure(self):
         """Builds the the parameters structure
         
@@ -38,12 +51,21 @@ class MPC():
             p (struct_symMX): parameter structure
         """
         pass
-
-    def get_decision_variables(self):
-        """Builds the decision variable
+    
+    def get_initial_state(self):
+        """Builds initial state from params
         
         Returns:
-            w (struct_symMX): decision variable
+            w0 (DMStruct): initial state for optimization
+        """
+        pass
+    
+    def get_state_bounds(self):
+        """Builds bounds on the state w
+        
+        Returns:
+            lbw (DMStruct): lower bounds on w
+            ubw (DMStruct): upper bounds on w
         """
         pass
     
@@ -89,7 +111,7 @@ class MPC():
         opts = {'ipopt.print_level':0, 'print_time':0}
         return nlpsol('solver', 'ipopt', mpc_problem, opts)
     
-    def get_MPC_action(self):
+    def solve_optimization(self):
         """Completes optimization for one MPC step
 
         Returns:
@@ -208,6 +230,19 @@ class MPCSingleHome(MPC):
         ])
         return w
     
+    def get_initial_state(self):
+        w0 = copy(self.w)(0)
+        
+    
+    def get_state_bounds(self):
+        lbw = copy(self.w)(-inf)
+        ubw = copy(self.w)(inf)
+        
+        lbw['input',:,'P_hp'] = 0
+        ubw['input',:,'P_hp'] = 1.5
+        
+        return lbw, ubw
+    
     def get_trajectory_structure(self):
         traj_full = {}
         traj_full['room'] = []
@@ -318,7 +353,7 @@ class MPCSingleHomeDistributed(MPCSingleHome):
                 entry('outdoor_temperature', repeat=self.N),
                 entry('reference_temperature', repeat=self.N),
                 entry('spot_price', repeat=self.N-1),
-                entry('dual_variable', repeat=self.N-1)
+                entry('dual_variables', repeat=self.N-1)
             ])
     
     def get_cost_function(self):
@@ -330,17 +365,20 @@ class MPCSingleHomeDistributed(MPCSingleHome):
         for k in range(self.N - 1): # Input not defined for the last timestep
             J += self.p['energy_weight'] * self.p['spot_price', k]\
                 * self.w['input', k, 'P_hp']
-            J += self.p['dual_variable', k] * self.w['input', k, 'P_hp'] # From dual decomposition, dual_var like a power price
+            J += self.p['dual_variables', k] * self.w['input', k, 'P_hp'] # From dual decomposition, dual_var like a power price
         
         return J
     
     def dummy_func(self):
         print('starting func')
-        for i in range(10000):
+        for _ in range(10000):
             self.w0['state', 0, 'room'] = 19
             self.w0['state', 0, 'room'] = 20
         print('finishing func')
         return self.w0
+    
+    def get_dual_update_contribution(self):
+        return np.array(vertcat(*self.w_opt['input',:, 'P_hp'])).flatten()
 
 
 class MPCPeakStateDistributed(MPC):
@@ -351,13 +389,13 @@ class MPCPeakStateDistributed(MPC):
     def get_parameters_structure(self):
         return struct_symMX([
             entry('peak_weight'), 
-            entry('dual_variable', repeat=self.N-1)
+            entry('dual_variables', repeat=self.N-1)
             ])
 
     def get_cost_function(self):
         J = 0
         for k in range(self.N-1):
-            J -= self.p['dual_variable', k] * self.w['peak', k]
+            J -= self.p['dual_variables', k] * self.w['peak', k]
             J += self.p['peak_weight'] * self.w['peak', k]
         return J
             
@@ -370,6 +408,12 @@ class MPCPeakStateDistributed(MPC):
             lbg.append(0)
             ubg.append(inf)
         return g, lbg, ubg
+    
+    def get_state_bounds(self):
+        lbw = copy(self.w)(0)
+        ubw = copy(self.w)(inf)
+
+        return lbw, ubw
     
     def get_trajectory_structure(self):
         traj_full = {}
@@ -399,14 +443,21 @@ class MPCPeakStateDistributed(MPC):
 if __name__ == '__main__':
     from time import time, sleep
     from pickle import loads, dumps
+    from copy import copy, deepcopy
     from concurrent.futures import ProcessPoolExecutor
-    N = 10
+    N = 50
     reference_temperature = [23 for _ in range(N)]
     outdoor_temperature = [10 for _ in range(N)]
     spot_price = [-(x-N/2)**2 + 50 for x in range(N-1)]
-    dual_variable = spot_price
+    dual_variables = spot_price
     
     # a = MPC(N=N,name='gen')
     b = MPCSingleHome(N=N,name='single')
     c = MPCSingleHomeDistributed(N=N,name='singleDistributed')
     d = MPCPeakStateDistributed(N=N,name='peak')
+    
+    with ProcessPoolExecutor() as executor:
+        result_map = executor.map(MPCSingleHomeDistributed.dummy_func, [c])
+        result_list = list(result_map)
+        res = result_list[0]
+        print(res.master)
