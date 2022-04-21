@@ -245,7 +245,7 @@ class MPCSingleHome(MPC):
         ubw = copy(self.w)(inf)
         
         lbw['input',:,'P_hp'] = 0
-        ubw['input',:,'P_hp'] = self.params['initial_state']['P_hp']
+        ubw['input',:,'P_hp'] = self.params['bounds']['P_max']
         
         return lbw, ubw
     
@@ -324,10 +324,10 @@ class MPCSingleHome(MPC):
         self.traj_full['P_hp'].append(self.w_opt['state',0,'room'])
 
     def update_initial_state(self):
-        self.w0['state', :N-1] = self.w_opt['state', 1:]
+        self.w0['state', :self.N-1] = self.w_opt['state', 1:]
         self.w0['state', -1] = self.w_opt['state', -1]
         
-        self.w0['input', :N-2] = self.w_opt['input', 1:]
+        self.w0['input', :self.N-2] = self.w_opt['input', 1:]
         self.w0['input', -1] = self.w_opt['input', -1]
         
     def update_constraints(self):
@@ -448,7 +448,7 @@ class MPCPeakStateDistributed(MPC):
         self.traj_full['peak'].append(self.w_opt['peak',0])
     
     def update_initial_state(self):
-        self.w0['peak', :N-2] = self.w_opt['peak', 1:]
+        self.w0['peak', :self.N-2] = self.w_opt['peak', 1:]
         self.w0['peak', -1] = self.w_opt['peak', -1]
         
     def update_constraints(self):
