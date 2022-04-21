@@ -5,14 +5,13 @@ class PartitionedMPC():
         self, 
         N: int, 
         T: int, 
-        mpcs: dict, 
-        params: dict
+        mpcs: dict
         ):
         
         self.N = N
         self.T = T
         self.mpcs = mpcs
-        self.params = params
+        
     def update_mpc_constraints(self):
         for mpc in self.mpcs.values():
             mpc.update_constraints()
@@ -23,11 +22,7 @@ class PartitionedMPC():
             
     def update_mpc_parameters(self, t):
         for mpc in self.mpcs.values():
-            mpc.update_parameters(self.params, t)
-            
-    def set_mpc_parameters(self):
-        for mpc in self.mpcs.values():
-            mpc.set_parameters(self.params)
+            mpc.update_parameters(t)
             
             
 class DistributedMPC(PartitionedMPC):
@@ -36,12 +31,11 @@ class DistributedMPC(PartitionedMPC):
         self, 
         N: int, 
         T: int, 
-        mpcs: dict, 
-        params: dict,
+        mpcs: dict,
         dual_update_constant: float
         ):
         
-        super.__init__(N, T, mpcs, params)
+        super.__init__(N, T, mpcs)
         self.dual_variables = self.get_dual_variables()
         self.dual_variables_traj = self.get_dual_variables_trajectory()
         self.dual_update_constant = dual_update_constant
@@ -65,8 +59,8 @@ class DistributedMPC(PartitionedMPC):
         
         f_tol = 1e-2 
         f_err = 1e6
-        f_sum_old = 1e6
-        while it < maxIt and f_err < f_tol:
+        f_sum_last = 1e6
+        while it < maxIt and f_err > f_tol:
             f_sum = 0
             dual_updates = np.zeros_like(self.dual_variables)
             for mpc in self.mpcs.values():
@@ -78,23 +72,23 @@ class DistributedMPC(PartitionedMPC):
             self.dual_variables += dual_update_step_size * dual_updates
             self.update_mpc_dual_variables()
             
-            f_err = np.abs(f_sum - f_sum_old)
-            f_sum_old = f_sum
+            f_err = np.abs(f_sum - f_sum_last)
+            f_sum_last = f_sum
         
         
     def run_full(self):
         
         for t in range(self.T):
             
-            self.update_mpc_parameters(t)
+            self.update_mpc_parameters(t) # prepare mpc params
             
-            self.update_mpc_constraints()
+            self.update_mpc_constraints() # prepare mpc start constraints
             
-            self.dual_decomposition()
+            self.dual_decomposition() # serial DD algorithm, get opt DVs
             
-            self.update_dual_variables_trajectory()
+            self.update_dual_variables_trajectory() 
             
-            self.update_mpc_state_trajectories()
+            self.update_mpc_state_trajectories() 
             
             
             

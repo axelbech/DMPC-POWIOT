@@ -4,6 +4,7 @@ from casadi.tools import *
 import numpy as np
 
 from copy import copy
+from pickle import dumps
 
 class MPC():
     """Model predictive control template for model predictive control using 
@@ -16,7 +17,7 @@ class MPC():
         Args:
             N (int): optimization window length
             name (str): instance name for parameter indexing
-            params (dict): initial states, bounds, nlp parameters
+            params (dict): initial states, bounds, optimization parameters
         """
         self.N = N
         self.name = name
@@ -27,8 +28,8 @@ class MPC():
         
         self.w0 = self.get_initial_state()
         self.lbw, self.ubw = self.get_state_bounds()
+        self.p_num = self.get_numerical_parameters()
         self.w_opt = copy(self.w)(0)
-        self.p_num = self.p(0)
         
         self.solver = self.get_solver()
         
@@ -53,7 +54,7 @@ class MPC():
         pass
     
     def get_initial_state(self):
-        """Builds initial state from params
+        """Builds initial decision variable state from params
         
         Returns:
             w0 (DMStruct): initial state for optimization
@@ -66,6 +67,14 @@ class MPC():
         Returns:
             lbw (DMStruct): lower bounds on w
             ubw (DMStruct): upper bounds on w
+        """
+        pass
+    
+    def get_numerical_parameters(self):
+        """Builds numerical optimization parameters from params
+        
+        Returns:
+            p_num (DMStruct): numerical parameters for optimization
         """
         pass
     
@@ -163,8 +172,8 @@ class MPC():
         for key, value in kwargs.items():
             self.p_num[key] = list(value) 
             
-    def update_parameters(self, p_ext, t):
-        """Update time variant internal parameters from external source
+    def update_parameters(self, t):
+        """Update time variant optimization parameters from params
 
         Args:
             p_ext (dict): external parameters structure
@@ -172,13 +181,6 @@ class MPC():
         """
         pass
     
-    def set_parameters(self, p_ext):
-        """Set time invariant internal parameters from external source
-
-        Args:
-            p_ext (dict): external parameters structure
-        """
-        pass
         
 
 class MPCSingleHome(MPC):
@@ -233,15 +235,31 @@ class MPCSingleHome(MPC):
     def get_initial_state(self):
         w0 = copy(self.w)(0)
         
+        w0['state',:,'room'] = self.params['initial_state']['room']
+        w0['state',:,'wall'] = self.params['initial_state']['wall']
+        
+        return w0
     
     def get_state_bounds(self):
         lbw = copy(self.w)(-inf)
         ubw = copy(self.w)(inf)
         
         lbw['input',:,'P_hp'] = 0
-        ubw['input',:,'P_hp'] = 1.5
+        ubw['input',:,'P_hp'] = self.params['initial_state']['P_hp']
         
         return lbw, ubw
+    
+    def get_numerical_parameters(self):
+        p_num = self.p(0)
+        
+        opt_params = self.params['opt_params']
+        p_num['energy_weight'] = opt_params['energy_weight']
+        p_num['comfort_weight'] = opt_params['comfort_weight']
+        p_num['rho_out'] = opt_params['rho_out']
+        p_num['rho_in'] = opt_params['rho_in']
+        p_num['COP'] = opt_params['COP']
+        
+        return p_num
     
     def get_trajectory_structure(self):
         traj_full = {}
@@ -304,7 +322,6 @@ class MPCSingleHome(MPC):
         self.traj_full['room'].append(self.w_opt['state',0,'room'])
         self.traj_full['wall'].append(self.w_opt['state',0,'wall'])
         self.traj_full['P_hp'].append(self.w_opt['state',0,'room'])
-    
 
     def update_initial_state(self):
         self.w0['state', :N-1] = self.w_opt['state', 1:]
@@ -320,25 +337,17 @@ class MPCSingleHome(MPC):
         self.lbw['state', 0, 'room'] = self.w0['state', 0, 'room']
         self.ubw['state', 0, 'room'] = self.w0['state', 0, 'room']
         
-    def update_parameters(self, p_ext, t):
-        specific = p_ext['controller_specific'][self.name]
+    def update_parameters(self, t):
+        opt_params = self.params['opt_params']
         self.p_num['outdoor_temperature'] = (
-            p_ext['outdoor_temperature'][t:t+self.N]
+            opt_params['outdoor_temperature'][t:t+self.N]
         )
         self.p_num['reference_temperature'] = (
-            specific['reference_temperature'][t:t+self.N]
+            opt_params['reference_temperature'][t:t+self.N]
         )
         self.p_num['spot_price'] = (
-            p_ext['spot_price'][t:t+self.N-1]
+            opt_params['spot_price'][t:t+self.N-1]
         )
-    
-    def set_parameters(self, p_ext):
-        specific = p_ext['controller_specific'][self.name]
-        self.p_num['energy_weight'] = specific['energy_weight']
-        self.p_num['comfort_weight'] = specific['comfort_weight']
-        self.p_num['rho_out'] = specific['rho_out']
-        self.p_num['rho_in'] = specific['rho_in']
-        self.p_num['COP'] = specific['COP']
 
             
 class MPCSingleHomeDistributed(MPCSingleHome):
@@ -409,11 +418,23 @@ class MPCPeakStateDistributed(MPC):
             ubg.append(inf)
         return g, lbg, ubg
     
+    def get_initial_state(self):
+        w0 = copy(self.w)(0)
+
+        return w0
+    
     def get_state_bounds(self):
         lbw = copy(self.w)(0)
-        ubw = copy(self.w)(inf)
+        ubw = copy(self.w)(self.params['bounds']['max_total_power'])
 
         return lbw, ubw
+    
+    def get_numerical_parameters(self):
+        p_num = self.p(0)
+        
+        p_num['peak_weight'] = self.params['opt_params']['peak_weight']
+        
+        return p_num
     
     def get_trajectory_structure(self):
         traj_full = {}
@@ -433,10 +454,6 @@ class MPCPeakStateDistributed(MPC):
     def update_constraints(self):
         self.lbw['peak', 0] = self.w0['peak', 0]
         self.ubw['peak', 0] = self.w0['peak', 0]
-    
-    def set_parameters(self, p_ext):
-        specific = p_ext['controller_specific'][self.name]
-        self.p_num['peak_weight'] = specific['peak_weight']
 
         
 
