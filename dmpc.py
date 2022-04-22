@@ -61,6 +61,8 @@ class DistributedMPC(PartitionedMPC):
         self.dual_variables = self.get_dual_variables()
         self.dual_variables_traj = self.get_dual_variables_trajectory()
         self.dual_update_constant = dual_update_constant
+        
+        self.f_sum_last = 1e6
     
     def get_dual_variables(self):
         """Builds dual variables
@@ -76,7 +78,9 @@ class DistributedMPC(PartitionedMPC):
         Returns:
             ndarray: dual variable trajectory
         """
-        return np.zeros((self.T,self.N-1))
+        dual_variables_traj = np.empty((self.T,self.N-1 + self.T))
+        dual_variables_traj[:] = np.nan
+        return dual_variables_traj
     
     def iterate_dual_variables(self):
         """Prepare dual variables for next time step
@@ -90,7 +94,7 @@ class DistributedMPC(PartitionedMPC):
         Args:
             t (int): time step
         """
-        self.dual_variables_traj[t, :] = self.dual_variables
+        self.dual_variables_traj[t, t:t+self.N-1] = self.dual_variables
         
     def update_mpc_dual_variables(self):
         """Update dual variables in mpcs with current dual variable
@@ -102,14 +106,15 @@ class DistributedMPC(PartitionedMPC):
         it = 0
         maxIt = 30
         
-        f_tol = 1e-2 
-        f_diff = 1e6
-        f_sum_last = 1e6
+        f_tol = 1e-1 * self.N
+        dv_tol = 0.1
         
-        while it < maxIt and f_diff > f_tol:
+        while it < maxIt:
             
             f_sum = 0
             dual_updates = np.zeros_like(self.dual_variables)
+            
+            dual_variables_last = np.copy(self.dual_variables)
             
             self.update_mpc_dual_variables()
             
@@ -118,21 +123,28 @@ class DistributedMPC(PartitionedMPC):
                 w_opt, f_opt = mpc.solve_optimization()
                 f_sum += f_opt
                 
-                mpc.update_optimal_state(mpc.w(w_opt))
+                mpc.set_optimal_state(mpc.w(w_opt))
+                # mpc.set_initial_state(mpc.w(w_opt))
                 dual_updates += mpc.get_dual_update_contribution()
                 
             dual_updates += self.dual_update_constant
-            
-            dual_update_step_size = 20  / np.sqrt(1+it)
+            dual_update_step_size = 0.3 / np.sqrt(1+it)
             dual_updates *= dual_update_step_size
-            
             self.dual_variables += dual_updates
             self.dual_variables[self.dual_variables < 0] = 0
             
-            f_diff = np.abs(f_sum - f_sum_last)
-            f_sum_last = f_sum
+            f_diff = np.abs(f_sum - self.f_sum_last)
+            self.f_sum_last = f_sum
+            dv_diff = (np.abs(self.dual_variables-dual_variables_last)).mean()
             
-            print(f'dual decomp iteration {it},  f_diff = {f_diff}')
+            print(
+                f'dual decomp iteration {it} '
+                f'f_diff = {f_diff} '
+                f'dual diff = {dv_diff}'
+                )
+            
+            if f_diff < f_tol and dv_diff < dv_tol:
+                break
             
             it += 1
         

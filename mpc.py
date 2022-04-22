@@ -138,6 +138,22 @@ class MPC():
         # print(f'home action PID: {os.getpid()}')
         return solution['x'], solution['f']
     
+    def set_optimal_state(self, w_res):
+        """Set internal optimal state with result from optimization
+        
+        """
+        if not isinstance(w_res, structure3.DMStruct):
+            w_res = self.w(w_res)
+        self.w_opt = w_res
+        
+    def set_initial_state(self, w_res):
+        """Set internal initial state
+        
+        """
+        if not isinstance(w_res, structure3.DMStruct):
+            w_res = self.w(w_res)
+        self.w0 = w_res
+    
     def update_initial_state(self):
         """Using w_opt from time t, update the start state w0 for time t+1
         
@@ -152,13 +168,7 @@ class MPC():
         """
         pass
     
-    def update_optimal_state(self, w_opt):
-        """Update internal optimal state with result from optimization
-        
-        """
-        if not isinstance(w_opt, structure3.DMStruct):
-            w_opt = self.w(w_opt)
-        self.w_opt = w_opt
+
         
     def update_trajectory(self):
         """Update trajectory with w_opt"""
@@ -374,7 +384,8 @@ class MPCSingleHomeDistributed(MPCSingleHome):
         for k in range(self.N - 1): # Input not defined for the last timestep
             J += self.p['energy_weight'] * self.p['spot_price', k]\
                 * self.w['input', k, 'P_hp']
-            J += self.p['dual_variables', k] * self.w['input', k, 'P_hp'] # From dual decomposition, dual_var like a power price
+            J += self.p['energy_weight'] * self.p['dual_variables', k] *\
+                self.w['input', k, 'P_hp'] # From dual decomposition, dual_var like a power price
         
         return J
     
@@ -404,7 +415,8 @@ class MPCPeakStateDistributed(MPC):
     def get_cost_function(self):
         J = 0
         for k in range(self.N-1):
-            J -= self.p['dual_variables', k] * self.w['peak', k]
+            J -= self.p['peak_weight'] * \
+                self.p['dual_variables', k] * self.w['peak', k]
             J += self.p['peak_weight'] * self.w['peak', k]
         return J
             

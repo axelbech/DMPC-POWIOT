@@ -4,15 +4,17 @@ from dmpc import DistributedMPC
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import cm
 
-N = 20
-T = 10
+N = 50
+T = 50
 
 n_houses = 1
 p_max = 1.5
 
 outdoor_temperature = [10 for _ in range(N+T)]
-reference_temperature = [23 for _ in range(N+T)]
+# reference_temperature = [23 for _ in range(N+T)]
+reference_temperature = list(np.fromfunction(lambda x: 5 * np.sin(x/10) + 22, (N+T,)))
 def price_func_exp(x):
     return (1 + 0.7 *np.exp(-((x-96)/40)**2) + np.exp(-((x-216)/60)**2)
             + 0.7 *np.exp(-((x-96-288)/40)**2) + np.exp(-((x-216-288)/60)**2))
@@ -35,8 +37,8 @@ params = {
             'P_max': p_max,
         },
         'initial_state': {
-            'room': 15,
-            'wall': 10,
+            'room': 24,
+            'wall': 18,
         }
     },
     'peak':{
@@ -44,7 +46,7 @@ params = {
             'peak_weight': 20
         },
         'bounds': {
-            'max_total_power': n_houses * p_max
+            'max_total_power': n_houses * 0.2* p_max
         },
         'initial_state': {}
     }
@@ -55,7 +57,7 @@ mpcs = dict(
     # peak = MPCPeakStateDistributed(N, 'peak', params['peak'])
     )
 
-dmpc = DistributedMPC(N, T, mpcs, -0.5)
+dmpc = DistributedMPC(N, T, mpcs, -0.3)
 dmpc.run_full()
 
 #%%
@@ -86,10 +88,11 @@ x, y = np.meshgrid(np.arange(traj_dv.shape[1]), np.arange(traj_dv.shape[0]))
 z = traj_dv
 figdv, axdv = plt.subplots(subplot_kw={"projection": "3d"})
 axdv.set_title('Dual variable values')
-surf = axdv.plot_surface(x, y, z)
+surf = axdv.plot_surface(x, y, z, cmap=cm.coolwarm)
 axdv.zaxis.set_rotate_label(False)
-axdv.set_xlabel('MPC horizon step')
+axdv.set_xlabel('Time')
 axdv.set_ylabel('Iteration')
 axdv.set_zlabel('$\lambda$')
 
 plt.show()
+# %%
