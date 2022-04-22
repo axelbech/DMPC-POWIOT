@@ -5,7 +5,7 @@ from dmpc import DistributedMPC
 import numpy as np
 import matplotlib.pyplot as plt
 
-N = 10
+N = 20
 T = 10
 
 n_houses = 1
@@ -55,14 +55,41 @@ mpcs = dict(
     # peak = MPCPeakStateDistributed(N, 'peak', params['peak'])
     )
 
-dmpc = DistributedMPC(N, T, mpcs, 0)
+dmpc = DistributedMPC(N, T, mpcs, -0.5)
 dmpc.run_full()
 
 #%%
 
 mpc_axel = mpcs['axel']
+
 pwr = mpc_axel.traj_full['P_hp']
-fig, ax = plt.subplots()
-ax.plot(pwr)
-ax.legend()
-ax.set_title('Power usage [W]')
+figp, axp = plt.subplots()
+axp.plot(pwr)
+axp.legend()
+axp.set_title('Power usage [W]')
+
+room = mpc_axel.traj_full['room']
+figr, axr = plt.subplots()
+axr.plot(room)
+axr.legend()
+axr.set_title('Room temperature')
+
+wall = mpc_axel.traj_full['wall']
+figw, axw = plt.subplots()
+axw.plot(wall)
+axw.legend()
+axw.set_title('Wall temperature')
+
+
+traj_dv = dmpc.dual_variables_traj
+x, y = np.meshgrid(np.arange(traj_dv.shape[1]), np.arange(traj_dv.shape[0]))
+z = traj_dv
+figdv, axdv = plt.subplots(subplot_kw={"projection": "3d"})
+axdv.set_title('Dual variable values')
+surf = axdv.plot_surface(x, y, z)
+axdv.zaxis.set_rotate_label(False)
+axdv.set_xlabel('MPC horizon step')
+axdv.set_ylabel('Iteration')
+axdv.set_zlabel('$\lambda$')
+
+plt.show()

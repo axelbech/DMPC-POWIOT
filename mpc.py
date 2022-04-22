@@ -319,9 +319,9 @@ class MPCSingleHome(MPC):
         return g, lbg, ubg
     
     def update_trajectory(self):
-        self.traj_full['room'].append(self.w_opt['state',0,'room'])
-        self.traj_full['wall'].append(self.w_opt['state',0,'wall'])
-        self.traj_full['P_hp'].append(self.w_opt['state',0,'room'])
+        self.traj_full['room'].append(self.w_opt['state',0,'room'].__float__())
+        self.traj_full['wall'].append(self.w_opt['state',0,'wall'].__float__())
+        self.traj_full['P_hp'].append(self.w_opt['input',0,'P_hp'].__float__())
 
     def update_initial_state(self):
         self.w0['state', :self.N-1] = self.w_opt['state', 1:]
@@ -445,7 +445,7 @@ class MPCPeakStateDistributed(MPC):
         return -np.array(vertcat(*self.w_opt['peak',:])).flatten()
     
     def update_trajectory(self):
-        self.traj_full['peak'].append(self.w_opt['peak',0])
+        self.traj_full['peak'].append(self.w_opt['peak',0].__float__())
     
     def update_initial_state(self):
         self.w0['peak', :self.N-2] = self.w_opt['peak', 1:]

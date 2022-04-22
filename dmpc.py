@@ -78,6 +78,11 @@ class DistributedMPC(PartitionedMPC):
         """
         return np.zeros((self.T,self.N-1))
     
+    def iterate_dual_variables(self):
+        """Prepare dual variables for next time step
+        """
+        self.dual_variables[:self.N-2] = self.dual_variables[1:]
+    
     def update_dual_variables_trajectory(self, t):
         """Update dual variables trajectory at given time with current dual 
         variables
@@ -95,7 +100,7 @@ class DistributedMPC(PartitionedMPC):
         
     def dual_decomposition(self):
         it = 0
-        maxIt = 10
+        maxIt = 30
         
         f_tol = 1e-2 
         f_diff = 1e6
@@ -106,6 +111,8 @@ class DistributedMPC(PartitionedMPC):
             f_sum = 0
             dual_updates = np.zeros_like(self.dual_variables)
             
+            self.update_mpc_dual_variables()
+            
             for mpc in self.mpcs.values():
                 
                 w_opt, f_opt = mpc.solve_optimization()
@@ -114,9 +121,13 @@ class DistributedMPC(PartitionedMPC):
                 mpc.update_optimal_state(mpc.w(w_opt))
                 dual_updates += mpc.get_dual_update_contribution()
                 
+            dual_updates += self.dual_update_constant
+            
             dual_update_step_size = 20  / np.sqrt(1+it)
-            self.dual_variables += dual_update_step_size * dual_updates
-            self.update_mpc_dual_variables()
+            dual_updates *= dual_update_step_size
+            
+            self.dual_variables += dual_updates
+            self.dual_variables[self.dual_variables < 0] = 0
             
             f_diff = np.abs(f_sum - f_sum_last)
             f_sum_last = f_sum
@@ -139,7 +150,9 @@ class DistributedMPC(PartitionedMPC):
             
             self.update_dual_variables_trajectory(t)
             
-            self.update_mpc_initial_states()
+            self.iterate_dual_variables()
             
             self.update_mpc_state_trajectories()
+            
+            self.update_mpc_initial_states()
             
