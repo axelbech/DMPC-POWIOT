@@ -124,11 +124,11 @@ class DistributedMPC(PartitionedMPC):
                 f_sum += f_opt
                 
                 mpc.set_optimal_state(mpc.w(w_opt))
-                # mpc.set_initial_state(mpc.w(w_opt))
+                mpc.set_initial_state(mpc.w(w_opt))
                 dual_updates += mpc.get_dual_update_contribution()
                 
             dual_updates += self.dual_update_constant
-            dual_update_step_size = 0.3 / np.sqrt(1+it)
+            dual_update_step_size = 20 / np.sqrt(1+it)
             dual_updates *= dual_update_step_size
             self.dual_variables += dual_updates
             self.dual_variables[self.dual_variables < 0] = 0

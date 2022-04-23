@@ -7,14 +7,16 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 
 N = 50
-T = 50
+T = 30
 
 n_houses = 1
 p_max = 1.5
 
 outdoor_temperature = [10 for _ in range(N+T)]
 # reference_temperature = [23 for _ in range(N+T)]
-reference_temperature = list(np.fromfunction(lambda x: 5 * np.sin(x/10) + 22, (N+T,)))
+reference_temperature = list(np.fromfunction(
+    lambda x: 5 * np.sin(x/10) + 22, (N+T,)
+    ))
 def price_func_exp(x):
     return (1 + 0.7 *np.exp(-((x-96)/40)**2) + np.exp(-((x-216)/60)**2)
             + 0.7 *np.exp(-((x-96-288)/40)**2) + np.exp(-((x-216-288)/60)**2))
@@ -24,7 +26,7 @@ spot_price = list(np.fromfunction(price_func_exp, (N+T,))) # Spot prices for two
 params = {
     'axel': {
         'opt_params': {
-            'energy_weight': 100,
+            'energy_weight': 80,
             'comfort_weight': 1,
             'rho_out': 0.18,
             'rho_in': 0.37,
@@ -43,26 +45,28 @@ params = {
     },
     'peak':{
         'opt_params': {
-            'peak_weight': 20
+            'peak_weight': 80
         },
         'bounds': {
-            'max_total_power': n_houses * 0.2* p_max
+            'max_total_power': n_houses * p_max
         },
         'initial_state': {}
     }
 }
 
 mpcs = dict(
-    axel = MPCSingleHomeDistributed(N, 'axel', params['axel'])
-    # peak = MPCPeakStateDistributed(N, 'peak', params['peak'])
+    axel = MPCSingleHomeDistributed(N, 'axel', params['axel']),
+    peak = MPCPeakStateDistributed(N, 'peak', params['peak'])
     )
 
-dmpc = DistributedMPC(N, T, mpcs, -0.3)
+dmpc = DistributedMPC(N, T, mpcs, 0)
 dmpc.run_full()
 
 #%%
 
 mpc_axel = mpcs['axel']
+
+mpc_peak = mpcs['peak']
 
 pwr = mpc_axel.traj_full['P_hp']
 figp, axp = plt.subplots()
@@ -81,6 +85,12 @@ figw, axw = plt.subplots()
 axw.plot(wall)
 axw.legend()
 axw.set_title('Wall temperature')
+
+wall = mpc_peak.traj_full['peak']
+fig, ax = plt.subplots()
+ax.plot(wall)
+ax.legend()
+ax.set_title('Peak state')
 
 
 traj_dv = dmpc.dual_variables_traj
