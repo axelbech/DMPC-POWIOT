@@ -466,18 +466,30 @@ class MPCPeakStateDistributed(MPC):
         self.w0['peak', -1] = self.w_opt['peak', -1]
         
     def update_constraints(self):
-        pass
+        # Assumes w_opt has not been computed for current step
+        self.lbw['peak', 0] = self.w_opt['peak', 0]
         # self.lbw['peak', 0] = self.w0['peak', 0]
         # self.ubw['peak', 0] = self.w0['peak', 0]
+
+
+class MPCPeakStateDistributedQuadratic(MPCPeakStateDistributed):
+    def get_cost_function(self):
+        J = 0
+        for k in range(self.N-1):
+            # J -= self.p['peak_weight'] * \
+            #     self.p['dual_variables', k] * self.w['peak', k]
+            J -= self.p['dual_variables', k] * self.w['peak', k]
+            J += self.p['peak_weight'] * self.w['peak', k]**2
+        return J
 
 
 class MPCCentralizedHomePeak(MPC):
     
     def __init__(self, N: int, name: str, params: dict):
-        super().__init__(N, name, params)
-        homes = params.keys()
+        homes = list(params.keys())
         homes.remove('peak')
         self.homes = homes
+        super().__init__(N, name, params)
         
     def get_parameters_structure(self):
         param_list = []
@@ -552,7 +564,6 @@ class MPCCentralizedHomePeak(MPC):
         for home in self.homes:
             w0[home,'room_temp',:] = self.params[home]['initial_state']['room']
             w0[home,'wall_temp',:] = self.params[home]['initial_state']['wall']
-            w0[home,'P_hp',:] = self.params[home]['initial_state']['P_hp']
         
         return w0
     
@@ -562,7 +573,7 @@ class MPCCentralizedHomePeak(MPC):
         
         for home in self.homes:
             lbw[home, 'P_hp', :] = 0
-            ubw[home, 'P_hp', :] = self.params['home']['bounds']['P_max']
+            ubw[home, 'P_hp', :] = self.params[home]['bounds']['P_max']
             
         lbw['peak_state', :] = 0
         ubw['peak_state', :] = self.params['peak']['bounds']['max_total_power']
@@ -644,10 +655,10 @@ class MPCCentralizedHomePeak(MPC):
                     Pow
                     )
                 
-                g.append(wall_plus - self.w['state', k+1, 'wall'])
+                g.append(wall_plus - self.w[home, 'wall_temp', k+1])
                 lbg.append(0)
                 ubg.append(0)
-                g.append(room_plus - self.w['state', k+1, 'room'])
+                g.append(room_plus - self.w[home, 'room_temp', k+1])
                 lbg.append(0)
                 ubg.append(0)
             
@@ -667,8 +678,8 @@ class MPCCentralizedHomePeak(MPC):
     
     def update_trajectory(self):
         for home in self.homes:
-            self.traj_full[home]['room'].append(self.w_opt[home,'room_temp',0].__float__())
-            self.traj_full[home]['wall'].append(self.w_opt[home,'wall_temp',0].__float__())
+            self.traj_full[home]['room_temp'].append(self.w_opt[home,'room_temp',0].__float__())
+            self.traj_full[home]['wall_temp'].append(self.w_opt[home,'wall_temp',0].__float__())
             self.traj_full[home]['P_hp'].append(self.w_opt[home,'P_hp',0].__float__())
         self.traj_full['peak_state'].append(self.w_opt['peak_state',0].__float__())
 

@@ -1,6 +1,9 @@
 import numpy as np
+from datetime import datetime
+# from pickle import dump
+from json import dump
 
-class PartitionedMPC():
+class MPCsWrapper():
     def __init__(
         self, 
         N: int, 
@@ -46,8 +49,44 @@ class PartitionedMPC():
         for mpc in self.mpcs.values():
             mpc.update_parameters(t)
             
+    def save_mpcs_to_file(self, f_path):
+        time = datetime.now().strftime("%Y%m%d-%H%M%S")
+        for mpc in self.mpcs.values():
+            c_name = type(mpc).__name__
+            f_name = c_name + '_N' + str(self.N) + 'T' + str(self.T) + \
+                '_' + time + '.json'
+            mpc_dict = dict(traj_full=mpc.traj_full, params=mpc.params)
+            with open(f_path + f_name, 'w') as file:
+                dump(mpc_dict, file, indent=4)
+                # dump(mpc_dict, file)
             
-class DistributedMPC(PartitionedMPC):
+    def run_full(self):
+        
+        for t in range(self.T):
+            print(f'time step {t}')
+            
+            self.update_mpc_parameters(t) # prepare mpc params
+            
+            self.update_mpc_constraints() # prepare mpc start constraints
+            
+            for mpc in self.mpcs.values():
+                
+                w_opt, f_opt = mpc.solve_optimization()
+                
+                mpc.set_optimal_state(mpc.w(w_opt))
+            
+            # self.dual_decomposition() # serial DD algorithm, get opt DVs
+            
+            # self.update_dual_variables_trajectory(t)
+            
+            # self.iterate_dual_variables()
+            
+            self.update_mpc_state_trajectories()
+            
+            self.update_mpc_initial_states()
+            
+            
+class DistributedMPC(MPCsWrapper):
 
     def __init__(
         self, 

@@ -1,13 +1,13 @@
 #%%
-from mpc import MPCSingleHomeDistributed, MPCPeakStateDistributed
-from dmpc import DistributedMPC
+from mpc import MPCCentralizedHomePeak, MPCPeakStateDistributedQuadratic, MPCSingleHomeDistributed, MPCPeakStateDistributed
+from dmpc import MPCsWrapper, DistributedMPC
 
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
-N = 50
-T = 30
+N = 288
+T = 50
 
 n_houses = 1
 p_max = 1.5
@@ -45,7 +45,7 @@ params = {
     },
     'peak':{
         'opt_params': {
-            'peak_weight': 80
+            'peak_weight': 10
         },
         'bounds': {
             'max_total_power': n_houses * p_max
@@ -54,55 +54,81 @@ params = {
     }
 }
 
-mpcs = dict(
-    axel = MPCSingleHomeDistributed(N, 'axel', params['axel']),
-    peak = MPCPeakStateDistributed(N, 'peak', params['peak'])
-    )
+# mpcc = MPCCentralizedHomePeak(N, 'centralized', params)
+# cmpc_wrapper = MPCsWrapper(N, T, {'centralized': mpcc})
+# cmpc_wrapper.run_full()
+# cmpc_wrapper.save_mpcs_to_file('data/')
 
+mpc_axel = MPCSingleHomeDistributed(N, 'axel', params['axel'])
+mpc_peak = MPCPeakStateDistributedQuadratic(N, 'peak', params['peak'])
+mpcs = dict(
+    axel = mpc_axel,
+    peak = mpc_peak
+    )
 dmpc = DistributedMPC(N, T, mpcs, 0)
 dmpc.run_full()
+dmpc.save_mpcs_to_file('data/runs/')
 
-#%%
+# pwr_c = mpcc.traj_full['axel']['P_hp']
+# pwr_d = mpc_axel.traj_full['P_hp']
+# figp, axp = plt.subplots()
+# axp.plot(pwr_c, label='centralized')
+# axp.plot(pwr_d, label='distributed')
+# axp.legend()
+# axp.set_title('Power usage [W]')
 
-mpc_axel = mpcs['axel']
+# room_c = mpcc.traj_full['axel']['room_temp']
+# room_d = mpc_axel.traj_full['room']
+# figr, axr = plt.subplots()
+# axr.plot(room_c, label='centralized')
+# axr.plot(room_d, label='distributed')
+# axr.legend()
+# axr.set_title('Room temperature')
 
-mpc_peak = mpcs['peak']
-
-pwr = mpc_axel.traj_full['P_hp']
-figp, axp = plt.subplots()
-axp.plot(pwr)
-axp.legend()
-axp.set_title('Power usage [W]')
-
-room = mpc_axel.traj_full['room']
-figr, axr = plt.subplots()
-axr.plot(room)
-axr.legend()
-axr.set_title('Room temperature')
-
-wall = mpc_axel.traj_full['wall']
-figw, axw = plt.subplots()
-axw.plot(wall)
-axw.legend()
-axw.set_title('Wall temperature')
-
-wall = mpc_peak.traj_full['peak']
-fig, ax = plt.subplots()
-ax.plot(wall)
-ax.legend()
-ax.set_title('Peak state')
+# plt.show()
 
 
-traj_dv = dmpc.dual_variables_traj
-x, y = np.meshgrid(np.arange(traj_dv.shape[1]), np.arange(traj_dv.shape[0]))
-z = traj_dv
-figdv, axdv = plt.subplots(subplot_kw={"projection": "3d"})
-axdv.set_title('Dual variable values')
-surf = axdv.plot_surface(x, y, z, cmap=cm.coolwarm)
-axdv.zaxis.set_rotate_label(False)
-axdv.set_xlabel('Time')
-axdv.set_ylabel('Iteration')
-axdv.set_zlabel('$\lambda$')
+# #%%
 
-plt.show()
+# mpc_axel = mpcs['axel']
+
+# mpc_peak = mpcs['peak']
+
+# pwr = mpc_axel.traj_full['P_hp']
+# figp, axp = plt.subplots()
+# axp.plot(pwr)
+# axp.legend()
+# axp.set_title('Power usage [W]')
+
+# room = mpc_axel.traj_full['room']
+# figr, axr = plt.subplots()
+# axr.plot(room)
+# axr.legend()
+# axr.set_title('Room temperature')
+
+# wall = mpc_axel.traj_full['wall']
+# figw, axw = plt.subplots()
+# axw.plot(wall)
+# axw.legend()
+# axw.set_title('Wall temperature')
+
+# wall = mpc_peak.traj_full['peak']
+# fig, ax = plt.subplots()
+# ax.plot(wall)
+# ax.legend()
+# ax.set_title('Peak state')
+
+
+# traj_dv = dmpc.dual_variables_traj
+# x, y = np.meshgrid(np.arange(traj_dv.shape[1]), np.arange(traj_dv.shape[0]))
+# z = traj_dv
+# figdv, axdv = plt.subplots(subplot_kw={"projection": "3d"})
+# axdv.set_title('Dual variable values')
+# surf = axdv.plot_surface(x, y, z, cmap=cm.coolwarm)
+# axdv.zaxis.set_rotate_label(False)
+# axdv.set_xlabel('Time')
+# axdv.set_ylabel('Iteration')
+# axdv.set_zlabel('$\lambda$')
+
+# plt.show()
 # %%
