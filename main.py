@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
-N = 288
+N = 50
 T = 50
 
 n_houses = 1
@@ -67,7 +67,7 @@ mpcs = dict(
     )
 dmpc = DistributedMPC(N, T, mpcs, 0)
 dmpc.run_full()
-dmpc.save_mpcs_to_file('data/runs/')
+dmpc.persist_results('data/runs/')
 
 # pwr_c = mpcc.traj_full['axel']['P_hp']
 # pwr_d = mpc_axel.traj_full['P_hp']

@@ -2,6 +2,7 @@ import numpy as np
 from datetime import datetime
 # from pickle import dump
 from json import dump
+import os
 
 class MPCsWrapper():
     def __init__(
@@ -49,16 +50,20 @@ class MPCsWrapper():
         for mpc in self.mpcs.values():
             mpc.update_parameters(t)
             
-    def save_mpcs_to_file(self, f_path):
+    def persist_results(self, path=''):
         time = datetime.now().strftime("%Y%m%d-%H%M%S")
+        wrapper_type = type(self).__name__
+        folder_name = f'{wrapper_type}-N{self.N}T{self.T}-{time}'
+        os.mkdir(path + folder_name)
         for mpc in self.mpcs.values():
-            c_name = type(mpc).__name__
-            f_name = c_name + '_N' + str(self.N) + 'T' + str(self.T) + \
-                '_' + time + '.json'
+            mpc_type = type(mpc).__name__
+            mpc_name = mpc.name
+            f_name = f'{mpc_type}-{mpc_name}.json'
             mpc_dict = dict(traj_full=mpc.traj_full, params=mpc.params)
-            with open(f_path + f_name, 'w') as file:
+            with open(path + folder_name + '/' + f_name, 'w') as file:
                 dump(mpc_dict, file, indent=4)
                 # dump(mpc_dict, file)
+        return folder_name
             
     def run_full(self):
         
@@ -140,6 +145,15 @@ class DistributedMPC(MPCsWrapper):
         """
         for mpc in self.mpcs.values():
             mpc.update_parameters_generic(dual_variables=self.dual_variables)
+            
+    def persist_results(self, path=''):
+        folder_name = super().persist_results(path)
+        dv_list = self.dual_variables_traj.tolist()
+        file_name = 'dv_traj.json'
+        with open(path + folder_name + '/' + file_name, 'w') as file:
+            dump(dv_list, file, indent=4)
+            
+        
         
     def dual_decomposition(self):
         it = 0

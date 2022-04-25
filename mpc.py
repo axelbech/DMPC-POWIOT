@@ -405,7 +405,7 @@ class MPCSingleHomeDistributed(MPCSingleHome):
 class MPCPeakStateDistributed(MPC):
         
     def get_decision_variables(self):
-        return struct_symMX([entry('peak', repeat=self.N-1)])
+        return struct_symMX([entry('peak_state', repeat=self.N-1)])
     
     def get_parameters_structure(self):
         return struct_symMX([
@@ -417,9 +417,9 @@ class MPCPeakStateDistributed(MPC):
         J = 0
         for k in range(self.N-1):
             # J -= self.p['peak_weight'] * \
-            #     self.p['dual_variables', k] * self.w['peak', k]
-            J -= self.p['dual_variables', k] * self.w['peak', k]
-            J += self.p['peak_weight'] * self.w['peak', k]
+            #     self.p['dual_variables', k] * self.w['peak_state', k]
+            J -= self.p['dual_variables', k] * self.w['peak_state', k]
+            J += self.p['peak_weight'] * self.w['peak_state', k]
         return J
             
     def get_constraint_functions(self):
@@ -427,7 +427,7 @@ class MPCPeakStateDistributed(MPC):
         lbg = []
         ubg = []
         for k in range(self.N - 2):
-            g.append(self.w['peak', k+1] - self.w['peak', k])
+            g.append(self.w['peak_state', k+1] - self.w['peak_state', k])
             lbg.append(0)
             ubg.append(inf)
         return g, lbg, ubg
@@ -452,24 +452,24 @@ class MPCPeakStateDistributed(MPC):
     
     def get_trajectory_structure(self):
         traj_full = {}
-        traj_full['peak'] = []
+        traj_full['peak_state'] = []
         return traj_full
     
     def get_dual_update_contribution(self):
-        return -np.array(vertcat(*self.w_opt['peak',:])).flatten()
+        return -np.array(vertcat(*self.w_opt['peak_state',:])).flatten()
     
     def update_trajectory(self):
-        self.traj_full['peak'].append(self.w_opt['peak',0].__float__())
+        self.traj_full['peak_state'].append(self.w_opt['peak_state',0].__float__())
     
     def update_initial_state(self):
-        self.w0['peak', :self.N-2] = self.w_opt['peak', 1:]
-        self.w0['peak', -1] = self.w_opt['peak', -1]
+        self.w0['peak_state', :self.N-2] = self.w_opt['peak_state', 1:]
+        self.w0['peak_state', -1] = self.w_opt['peak_state', -1]
         
     def update_constraints(self):
         # Assumes w_opt has not been computed for current step
-        self.lbw['peak', 0] = self.w_opt['peak', 0]
-        # self.lbw['peak', 0] = self.w0['peak', 0]
-        # self.ubw['peak', 0] = self.w0['peak', 0]
+        self.lbw['peak_state', 0] = self.w_opt['peak_state', 0]
+        # self.lbw['peak_state', 0] = self.w0['peak_state', 0]
+        # self.ubw['peak_state', 0] = self.w0['peak_state', 0]
 
 
 class MPCPeakStateDistributedQuadratic(MPCPeakStateDistributed):
@@ -477,9 +477,9 @@ class MPCPeakStateDistributedQuadratic(MPCPeakStateDistributed):
         J = 0
         for k in range(self.N-1):
             # J -= self.p['peak_weight'] * \
-            #     self.p['dual_variables', k] * self.w['peak', k]
-            J -= self.p['dual_variables', k] * self.w['peak', k]
-            J += self.p['peak_weight'] * self.w['peak', k]**2
+            #     self.p['dual_variables', k] * self.w['peak_state', k]
+            J -= self.p['dual_variables', k] * self.w['peak_state', k]
+            J += self.p['peak_weight'] * self.w['peak_state', k]**2
         return J
 
 
