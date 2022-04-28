@@ -712,6 +712,9 @@ class MPCCentralizedHomePeak(MPC):
             self.lbw[home, 'room_temp', 0] = self.w0[home, 'room_temp', 0]
             self.ubw[home, 'room_temp', 0] = self.w0[home, 'room_temp', 0]
             
+        self.lbw['peak_state', 0] = round(float(self.w_opt['peak_state',0]), 6)
+            
+            
     def update_parameters(self, t):
         for home in self.homes:
             opt_params = self.params[home]['opt_params']
