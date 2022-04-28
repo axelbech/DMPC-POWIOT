@@ -208,8 +208,8 @@ class MPCSingleHome(MPC):
             ])
         
     def get_dynamics_functions(self):
-        wall = MX.sym('wall')
-        room = MX.sym('room')
+        wall = MX.sym('wall_temp')
+        room = MX.sym('room_temp')
         OutTemp = MX.sym('OutTemp')
 
         rho_out = MX.sym('rho_out')
@@ -233,7 +233,7 @@ class MPCSingleHome(MPC):
         return wall_func, room_func
 
     def get_decision_variables(self):
-        MPC_states = struct_symMX([entry('room'), entry('wall')])
+        MPC_states = struct_symMX([entry('room_temp'), entry('wall_temp')])
         MPC_inputs = struct_symMX([entry('P_hp')])
 
         w = struct_symMX([
@@ -245,8 +245,8 @@ class MPCSingleHome(MPC):
     def get_initial_state(self):
         w0 = copy(self.w)(0)
         
-        w0['state',:,'room'] = self.params['initial_state']['room']
-        w0['state',:,'wall'] = self.params['initial_state']['wall']
+        w0['state',:,'room_temp'] = self.params['initial_state']['room_temp']
+        w0['state',:,'wall_temp'] = self.params['initial_state']['wall_temp']
         
         return w0
     
@@ -273,8 +273,8 @@ class MPCSingleHome(MPC):
     
     def get_trajectory_structure(self):
         traj_full = {}
-        traj_full['room'] = []
-        traj_full['wall'] = []
+        traj_full['room_temp'] = []
+        traj_full['wall_temp'] = []
         traj_full['P_hp'] = []
         return traj_full
     
@@ -282,7 +282,7 @@ class MPCSingleHome(MPC):
         J = 0
         for k in range(self.N): 
             J += self.p['comfort_weight'] * \
-            (self.w['state', k, 'room'] - self.p['reference_temperature',k])**2
+            (self.w['state', k, 'room_temp'] - self.p['reference_temperature',k])**2
         
         for k in range(self.N - 1): # Input not defined for the last timestep
             J += self.p['energy_weight'] * self.p['spot_price', k]\
@@ -299,8 +299,8 @@ class MPCSingleHome(MPC):
         self.wall_func, self.room_func = self.get_dynamics_functions()
         
         for k in range(self.N - 1):
-            wall = self.w['state', k, 'wall']
-            room = self.w['state', k, 'room']
+            wall = self.w['state', k, 'wall_temp']
+            room = self.w['state', k, 'room_temp']
             Pow = self.w['input', k, 'P_hp']
             out_temp = self.p['outdoor_temperature', k]
             
@@ -319,18 +319,18 @@ class MPCSingleHome(MPC):
                 Pow
                 )
             
-            g.append(wall_plus - self.w['state', k+1, 'wall'])
+            g.append(wall_plus - self.w['state', k+1, 'wall_temp'])
             lbg.append(0)
             ubg.append(0)
-            g.append(room_plus - self.w['state', k+1, 'room'])
+            g.append(room_plus - self.w['state', k+1, 'room_temp'])
             lbg.append(0)
             ubg.append(0)
                 
         return g, lbg, ubg
     
     def update_trajectory(self):
-        self.traj_full['room'].append(self.w_opt['state',0,'room'].__float__())
-        self.traj_full['wall'].append(self.w_opt['state',0,'wall'].__float__())
+        self.traj_full['room_temp'].append(self.w_opt['state',0,'room_temp'].__float__())
+        self.traj_full['wall_temp'].append(self.w_opt['state',0,'wall_temp'].__float__())
         self.traj_full['P_hp'].append(self.w_opt['input',0,'P_hp'].__float__())
 
     def update_initial_state(self):
@@ -341,11 +341,11 @@ class MPCSingleHome(MPC):
         self.w0['input', -1] = self.w_opt['input', -1]
         
     def update_constraints(self):
-        self.lbw['state', 0, 'wall'] = self.w0['state', 0, 'wall']
-        self.ubw['state', 0, 'wall'] = self.w0['state', 0, 'wall']
+        self.lbw['state', 0, 'wall_temp'] = self.w0['state', 0, 'wall_temp']
+        self.ubw['state', 0, 'wall_temp'] = self.w0['state', 0, 'wall_temp']
         
-        self.lbw['state', 0, 'room'] = self.w0['state', 0, 'room']
-        self.ubw['state', 0, 'room'] = self.w0['state', 0, 'room']
+        self.lbw['state', 0, 'room_temp'] = self.w0['state', 0, 'room_temp']
+        self.ubw['state', 0, 'room_temp'] = self.w0['state', 0, 'room_temp']
         
     def update_parameters(self, t):
         opt_params = self.params['opt_params']
@@ -379,7 +379,7 @@ class MPCSingleHomeDistributed(MPCSingleHome):
         J = 0
         for k in range(self.N): 
             J += self.p['comfort_weight'] * \
-            (self.w['state', k, 'room'] - self.p['reference_temperature',k])**2
+            (self.w['state', k, 'room_temp'] - self.p['reference_temperature',k])**2
         
         for k in range(self.N - 1): # Input not defined for the last timestep
             J += self.p['energy_weight'] * self.p['spot_price', k]\
@@ -393,8 +393,8 @@ class MPCSingleHomeDistributed(MPCSingleHome):
     def dummy_func(self):
         print('starting func')
         for _ in range(10000):
-            self.w0['state', 0, 'room'] = 19
-            self.w0['state', 0, 'room'] = 20
+            self.w0['state', 0, 'room_temp'] = 19
+            self.w0['state', 0, 'room_temp'] = 20
         print('finishing func')
         return self.w0
     
@@ -459,7 +459,9 @@ class MPCPeakStateDistributed(MPC):
         return -np.array(vertcat(*self.w_opt['peak_state',:])).flatten()
     
     def update_trajectory(self):
-        self.traj_full['peak_state'].append(self.w_opt['peak_state',0].__float__())
+        self.traj_full['peak_state'].append(
+            round(self.w_opt['peak_state',0].__float__(), 6)
+            )
     
     def update_initial_state(self):
         self.w0['peak_state', :self.N-2] = self.w_opt['peak_state', 1:]
@@ -467,9 +469,14 @@ class MPCPeakStateDistributed(MPC):
         
     def update_constraints(self):
         # Assumes w_opt has not been computed for current step
-        self.lbw['peak_state', 0] = self.w_opt['peak_state', 0]
+        # self.lbw['peak_state', 0] = self.w_opt['peak_state', 0]
+        self.lbw['peak_state', 0] = round(float(self.w_opt['peak_state',0]), 6)
         # self.lbw['peak_state', 0] = self.w0['peak_state', 0]
         # self.ubw['peak_state', 0] = self.w0['peak_state', 0]
+        
+    # def set_optimal_state(self, w_res):
+    #     super().set_optimal_state(w_res)
+    #     self.w_opt['peak_state', 0]=round(float(self.w_opt['peak_state',0]), 6)
 
 
 class MPCPeakStateDistributedQuadratic(MPCPeakStateDistributed):
@@ -487,7 +494,7 @@ class MPCCentralizedHomePeak(MPC):
     
     def __init__(self, N: int, name: str, params: dict):
         homes = list(params.keys())
-        homes.remove('peak')
+        if 'peak' in homes: homes.remove('peak')
         self.homes = homes
         super().__init__(N, name, params)
         
@@ -517,8 +524,8 @@ class MPCCentralizedHomePeak(MPC):
         return p
         
     def get_dynamics_functions(self):
-        wall = MX.sym('wall')
-        room = MX.sym('room')
+        wall = MX.sym('wall_temp')
+        room = MX.sym('room_temp')
         OutTemp = MX.sym('OutTemp')
 
         rho_out = MX.sym('rho_out')
@@ -562,8 +569,8 @@ class MPCCentralizedHomePeak(MPC):
         w0 = copy(self.w)(0)
         
         for home in self.homes:
-            w0[home,'room_temp',:] = self.params[home]['initial_state']['room']
-            w0[home,'wall_temp',:] = self.params[home]['initial_state']['wall']
+            w0[home,'room_temp',:] = self.params[home]['initial_state']['room_temp']
+            w0[home,'wall_temp',:] = self.params[home]['initial_state']['wall_temp']
         
         return w0
     
@@ -718,6 +725,19 @@ class MPCCentralizedHomePeak(MPC):
                 opt_params['spot_price'][t:t+self.N-1]
             )
         
+class MPCCentralizedHomePeakQuadratic(MPCCentralizedHomePeak):
+    def get_cost_function(self):
+        J = 0     
+        for home in self.homes:
+            for k in range(self.N):
+                J += self.p[home, 'comfort_weight'] * \
+    (self.w[home, 'room_temp', k] - self.p[home, 'reference_temperature', k])**2
+            for k in range(self.N-1):
+                J += self.p[home, 'energy_weight'] * \
+                    self.p[home, 'spot_price', k] * self.w[home, 'P_hp', k]
+        for k in range(self.N-1):
+            J += self.p['peak_state', 'peak_weight'] * self.w['peak_state', k]**2
+        return J
 
 if __name__ == '__main__':
     from time import time, sleep

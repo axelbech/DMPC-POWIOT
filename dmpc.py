@@ -80,11 +80,6 @@ class MPCsWrapper():
                 
                 mpc.set_optimal_state(mpc.w(w_opt))
             
-            # self.dual_decomposition() # serial DD algorithm, get opt DVs
-            
-            # self.update_dual_variables_trajectory(t)
-            
-            # self.iterate_dual_variables()
             
             self.update_mpc_state_trajectories()
             
@@ -157,7 +152,7 @@ class DistributedMPC(MPCsWrapper):
         
     def dual_decomposition(self):
         it = 0
-        maxIt = 30
+        maxIt = 20
         
         f_tol = 1e-1 * self.N
         dv_tol = 0.1

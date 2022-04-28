@@ -1,21 +1,28 @@
-import time
-from casadi import *
-from casadi.tools import *
-
-import concurrent.futures
-from multiprocessing import Pool
 import pickle
-import os
+from datetime import datetime
 
-R = 64
-la = [x for x in range(R)]
-lb = [2*x for x in range(R)]
 
-def func(a, b):
-    print(os.getpid())
-    return a + b
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from pytz import timezone
 
-if __name__ == '__main__':
-    pool = Pool(processes=8)
-    m = pool.starmap(func, zip(la, lb))
-    print(m) 
+filename = "data/spotdata/SpotData2021.pkl"
+
+with open(filename, 'rb') as file:
+    res = pickle.load(file)
+    
+dt = datetime(2021, 11, 29, 0, 0, tzinfo=timezone('UTC'))
+
+start = res['Time_start']
+end = res['Time_end']
+price = res['Price']
+
+start = [d.astimezone(timezone('Europe/Oslo')) for d in start]
+
+i = start.index(dt)
+
+plt.plot(start[i:i+24], price[i:i+24])
+ax = plt.gca()
+ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+plt.show()
+
