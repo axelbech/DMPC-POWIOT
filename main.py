@@ -73,7 +73,7 @@ params = {
     },
     'peak':{
         'opt_params': {
-            'peak_weight': 50
+            'peak_weight': 20
         },
         'bounds': {
             'max_total_power': n_houses * p_max
