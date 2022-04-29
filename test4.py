@@ -1,43 +1,22 @@
-from casadi import *
-from casadi.tools import *
+from multiprocessing import Process, Manager
+import os
 
-N = 20
-M = 5
-p_max = 1.5
+N = 10
 
-w = struct_symMX([entry('peak', repeat=N)])
-
-p = struct_symMX([entry('weight'), entry('dual_variable', repeat=N)])
-
-J = 0
-J += M * N * p['weight'] * w['peak', -1]
-for k in range(N):
-    J -= p['dual_variable', k] * w['peak', k]
+def append_to_dict(managed_dict):
+    print(f'Changing dictionary, pid = {os.getpid()}')
+    managed_dict['hello'] = 'world'
+    managed_dict['foo'] = 'bar'
     
-g = []
-lbg = []
-ubg = []
-lbw = []
-ubw = []
-for k in range(N - 1):
-    g.append(w['peak', k+1] - w['peak', k])
-    lbg.append(0)
-    ubg.append(inf)
-for k in range(N):
-    lbw.append(0)
-    ubw.append(M * p_max)
-
-mpc_problem = {'f': J, 'x': w, 'g': vertcat(*(g)), 'p': p}
-opts = {'ipopt.print_level':0, 'print_time':0}
-solver = nlpsol('solver', 'ipopt', mpc_problem, opts)
-
-w0 = w(1)
-p_num = p(0)
-p_num['weight'] = 1
-p_num['dual_variable', :] = 1
-# p_num['dual_variable', 4] = 5
-
-solution = solver(x0=w0,lbx=lbw,ubx=ubw,lbg=lbg,ubg=ubg,p=p_num) 
-x = solution['x']
-
-print(x)
+def print_func():
+    print('hello world')
+    
+if __name__ == '__main__':
+    manager = Manager()
+    managed_dict = manager.dict()
+    managed_dict['dual_variables'] =  [0] * N
+    p = Process(target=append_to_dict, args=(managed_dict,))
+    p.start()
+    p.join()
+    print(f'main pid = {os.getpid()}')
+    print(managed_dict)

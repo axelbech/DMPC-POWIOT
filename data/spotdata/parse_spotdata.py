@@ -31,5 +31,5 @@ for t in range(N+T):
     closest_idx = time_full.index(min(time_full, key=lambda d: abs(date - d)))
     spot_price_5m[t] = Price[closest_idx]
     
-with open('data/spotdata/spot_price_5m.json', 'w') as file:
-    json.dump(list(spot_price_5m), file)
+# with open('data/spotdata/spot_price_5m.json', 'w') as file:
+#     json.dump(list(spot_price_5m), file)

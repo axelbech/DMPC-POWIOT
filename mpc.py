@@ -1,25 +1,30 @@
+from copy import copy
+from pickle import dumps
+import os
+
 from weakref import ref
 from casadi import *
 from casadi.tools import *
 import numpy as np
 
-from copy import copy
-from pickle import dumps
+
 
 class MPC():
     """Model predictive control template for model predictive control using 
     CasADi symbolics and IPOPT for optimization
     
     """
-    def __init__(self, N: int, name: str, params: dict):
+    def __init__(self, N: int, T: int, name: str, params: dict):
         """Create an MPC object
 
         Args:
             N (int): optimization window length
+            T (int): simulation time
             name (str): instance name for parameter indexing
             params (dict): initial states, bounds, optimization parameters
         """
         self.N = N
+        self.T = T
         self.name = name
         self.params = params
 
@@ -168,8 +173,6 @@ class MPC():
         """
         pass
     
-
-        
     def update_trajectory(self):
         """Update trajectory with w_opt"""
         pass
@@ -191,7 +194,51 @@ class MPC():
         """
         pass
     
+    def run_full(self, return_dict):
         
+        for t in range(self.T):
+            print(f'time step {t}, pid = {os.getpid()}')
+            
+            self.update_parameters(t) # prepare mpc params
+            
+            self.update_constraints() # prepare mpc start constraints
+                
+            w_opt, f_opt = self.solve_optimization()
+                
+            self.set_optimal_state(w_opt)
+            
+            self.update_trajectory()
+            
+            self.update_initial_state()
+        
+        mpc_dict = dict(traj_full=self.traj_full, params=self.params)
+        return mpc_dict
+
+
+class MPCDistributed(MPC):
+    
+    def run_full(self, managed_dict):
+        t = 0
+        while t < self.T:
+            print(f'time step {t}')
+            
+            self.update_parameters(t) # prepare mpc params
+            
+            self.update_constraints() # prepare mpc start constraints
+            
+            while t == managed_dict['t']:
+                pass
+                
+            w_opt, f_opt = self.solve_optimization()
+            
+            self.update_parameters_generic(dual_variables=self.dual_variables)
+                
+            self.set_optimal_state(w_opt)
+            
+            self.update_trajectory()
+            
+            self.update_initial_state()
+
 
 class MPCSingleHome(MPC):
         
@@ -358,8 +405,7 @@ class MPCSingleHome(MPC):
         self.p_num['spot_price'] = (
             opt_params['spot_price'][t:t+self.N-1]
         )
-
-            
+           
 class MPCSingleHomeDistributed(MPCSingleHome):
         
     def get_parameters_structure(self):
