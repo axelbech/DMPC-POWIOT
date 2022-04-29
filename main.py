@@ -1,15 +1,18 @@
 #%%
 import json
+from multiprocessing import Process, Manager
+from concurrent.futures import ProcessPoolExecutor
+import time
 
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
-from mpc import MPCCentralizedHomePeak, MPCCentralizedHomePeakQuadratic, MPCPeakStateDistributedQuadratic, MPCSingleHomeDistributed, MPCPeakStateDistributed
+from mpc import MPCCentralizedHomePeak, MPCCentralizedHomePeakQuadratic, MPCPeakStateDistributedQuadratic, MPCSingleHome, MPCSingleHomeDistributed, MPCPeakStateDistributed
 from dmpc import MPCsWrapper, DistributedMPC
 
-N = 100
-T = 100
+N = 288
+T = 288
 
 n_houses = 2
 p_max = 1.5
@@ -83,10 +86,39 @@ params = {
 }
 
 #%%
-cmpc_quad = MPCCentralizedHomePeakQuadratic(N, 'cent_quad', params)
-w_quad = MPCsWrapper(N, T, {'centralized': cmpc_quad})
-w_quad.run_full()
-tj = cmpc_quad.traj_full
+
+# if __name__ == '__main__':
+#     mpc_seb = MPCSingleHome(N, T, 'seb', params['seb'])
+#     M = 16
+#     with ProcessPoolExecutor() as executor:
+#         m = executor.map(mpc_seb.run_full, [{}]*M)
+#         res = list(m)
+#         print(m)
+
+
+if __name__ == '__main__':
+    mpc_seb = MPCSingleHome(N, T, 'seb', params['seb'])
+    results_manager = Manager()
+    res_seb = results_manager.dict()
+    process_list = []
+    for i in range(4):
+        print('creating process')
+        then = time.time()
+        process = Process(target=mpc_seb.run_full, args=(res_seb,))
+        process.start()
+        process_list.append(process)
+        now = time.time()
+        print(f'######### time diff = {now-then} #########')
+    for process in process_list:
+        process.join()
+    print(res_seb['traj_full']['room_temp'])
+    
+
+#%%
+# cmpc_quad = MPCCentralizedHomePeakQuadratic(N, 'cent_quad', params)
+# w_quad = MPCsWrapper(N, T, {'centralized': cmpc_quad})
+# w_quad.run_full()
+# tj = cmpc_quad.traj_full
 
 #%%
 # mpcs_lin = dict(
@@ -120,9 +152,3 @@ tj = cmpc_quad.traj_full
 # w_quad.run_full()
 # w_quad.persist_results('data/runs/')
 
-
-#%%
-# 
-
-# 
-# 

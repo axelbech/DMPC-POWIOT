@@ -211,8 +211,8 @@ class MPC():
             
             self.update_initial_state()
         
-        mpc_dict = dict(traj_full=self.traj_full, params=self.params)
-        return mpc_dict
+        return_dict['traj_full'] = self.traj_full
+        return_dict['params'] = self.params
 
 
 class MPCDistributed(MPC):
