@@ -4,6 +4,39 @@ from datetime import datetime
 from json import dump
 import os
 
+
+class DMPCCoordinator():
+    def __init__(
+        self,
+        N: int,
+        T: int,
+        controllers: list
+        ):
+        """_summary_
+
+        Args:
+            N (int): mpc prediction horizon
+            T (int): time steps
+            controllers (list): names of controllers
+        """
+        self.N = N
+        self.T = T
+        self.controllers = controllers
+
+    def run_full(self, public_coordination: dict, private_coordination: dict):
+        """
+
+        Args:
+            public_coordination (dict): to coordinate time and dual variable
+            private_coordination (dict): to coordinate dual update 
+            contribution and optimal cost function value
+        """
+
+
+
+
+
+
 class MPCsWrapper():
     def __init__(
         self, 
@@ -215,4 +248,8 @@ class DistributedMPC(MPCsWrapper):
             self.update_mpc_state_trajectories()
             
             self.update_mpc_initial_states()
+            
+            
+            
+            
             

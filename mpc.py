@@ -195,6 +195,11 @@ class MPC():
         pass
     
     def run_full(self, return_dict):
+        """Run the MPC simulation for T time steps
+
+        Args:
+            return_dict (dict): for returning the results
+        """
         
         for t in range(self.T):
             print(f'time step {t}, pid = {os.getpid()}')
@@ -217,7 +222,15 @@ class MPC():
 
 class MPCDistributed(MPC):
     
-    def run_full(self, managed_dict):
+    def run_full(self, return_dict, public_coordination, private_coordination):
+        """Run the distributed MPC simulation with coordination from a 
+        coordinator object
+
+        Args:
+            return_dict (dict): for returning the results
+            coordination_dict (dict): to coordinate time and get dual variable
+            dv_contribution (list): for sending dual variable update contributions
+        """
         t = 0
         while t < self.T:
             print(f'time step {t}')
@@ -226,18 +239,31 @@ class MPCDistributed(MPC):
             
             self.update_constraints() # prepare mpc start constraints
             
-            while t == managed_dict['t']:
-                pass
-                
-            w_opt, f_opt = self.solve_optimization()
+            self.update_parameters_generic(
+                dual_variables=public_coordination['dual_variable']
+                )
             
-            self.update_parameters_generic(dual_variables=self.dual_variables)
-                
-            self.set_optimal_state(w_opt)
+            while t >= public_coordination['t']:
+                w_opt, f_opt = self.solve_optimization()
+                self.set_optimal_state(w_opt)
+                private_coordination['dual_update_contribution'] = \
+                    self.get_dual_update_contribution()
+                private_coordination['f_opt'] = f_opt
             
             self.update_trajectory()
             
             self.update_initial_state()
+
+        return_dict['traj_full'] = self.traj_full
+        return_dict['params'] = self.params
+        
+    def get_dual_update_contribution(self):
+        """_summary_
+
+        Returns:
+            dv_contribution (list): dual variable update contribution
+        """
+        pass
 
 
 class MPCSingleHome(MPC):
@@ -514,16 +540,8 @@ class MPCPeakStateDistributed(MPC):
         self.w0['peak_state', -1] = self.w_opt['peak_state', -1]
         
     def update_constraints(self):
-        # Assumes w_opt has not been computed for current step
-        # self.lbw['peak_state', 0] = self.w_opt['peak_state', 0]
+        # Need numerical tweaking to ensure feasability
         self.lbw['peak_state', 0] = round(float(self.w_opt['peak_state',0]), 6)
-        # self.lbw['peak_state', 0] = self.w0['peak_state', 0]
-        # self.ubw['peak_state', 0] = self.w0['peak_state', 0]
-        
-    # def set_optimal_state(self, w_res):
-    #     super().set_optimal_state(w_res)
-    #     self.w_opt['peak_state', 0]=round(float(self.w_opt['peak_state',0]), 6)
-
 
 class MPCPeakStateDistributedQuadratic(MPCPeakStateDistributed):
     def get_cost_function(self):
