@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 
 from mpc import MPCCentralizedHomePeak, MPCCentralizedHomePeakQuadratic, MPCPeakStateDistributedQuadratic, MPCSingleHome, MPCSingleHomeDistributed, MPCPeakStateDistributed
-from wrappers import MPCsWrapper, DistributedMPC
+from wrappers import MPCsWrapper, DistributedMPC, DMPCWrapper, DMPCCoordinator
 
 N = 288
 T = 288
@@ -86,6 +86,17 @@ params = {
 }
 
 #%%
+if __name__ == '__main__':
+    mpcs_lin = dict(
+        axel = MPCSingleHomeDistributed(N, T, 'axel', params['axel']),
+        seb =  MPCSingleHomeDistributed(N, T, 'seb', params['seb']),
+        peak = MPCPeakStateDistributedQuadratic(N, T, 'peak', params['peak'])
+        )
+    coordinator = DMPCCoordinator(N, T, [ctrl for ctrl in mpcs_lin], 0)
+    wrapper = DMPCWrapper(N, T, [ctrl for ctrl in mpcs_lin.values()], coordinator)
+    wrapper.run_full()
+
+#%%
 
 # if __name__ == '__main__':
 #     mpc_seb = MPCSingleHome(N, T, 'seb', params['seb'])
@@ -96,22 +107,22 @@ params = {
 #         print(m)
 
 
-if __name__ == '__main__':
-    mpc_seb = MPCSingleHome(N, T, 'seb', params['seb'])
-    results_manager = Manager()
-    res_seb = results_manager.dict()
-    process_list = []
-    for i in range(4):
-        print('creating process')
-        then = time.time()
-        process = Process(target=mpc_seb.run_full, args=(res_seb,))
-        process.start()
-        process_list.append(process)
-        now = time.time()
-        print(f'######### time diff = {now-then} #########')
-    for process in process_list:
-        process.join()
-    print(res_seb['traj_full']['room_temp'])
+# if __name__ == '__main__':
+#     mpc_seb = MPCSingleHome(N, T, 'seb', params['seb'])
+#     results_manager = Manager()
+#     res_seb = results_manager.dict()
+#     process_list = []
+#     for i in range(4):
+#         print('creating process')
+#         then = time.time()
+#         process = Process(target=mpc_seb.run_full, args=(res_seb,))
+#         process.start()
+#         process_list.append(process)
+#         now = time.time()
+#         print(f'######### time diff = {now-then} #########')
+#     for process in process_list:
+#         process.join()
+#     print(res_seb['traj_full']['room_temp'])
     
 
 #%%
@@ -132,13 +143,13 @@ if __name__ == '__main__':
 
 # #%%
 # mpcs_quad = dict(
-#     axel = MPCSingleHomeDistributed(N, 'axel', params['axel']),
-#     seb =  MPCSingleHomeDistributed(N, 'seb', params['seb']),
-#     peak = MPCPeakStateDistributedQuadratic(N, 'peak', params['peak'])
+#     axel = MPCSingleHomeDistributed(N, T, 'axel', params['axel']),
+#     seb =  MPCSingleHomeDistributed(N, T, 'seb', params['seb']),
+#     peak = MPCPeakStateDistributedQuadratic(N, T, 'peak', params['peak'])
 #     )
 # dmpc_quad = DistributedMPC(N, T, mpcs_quad, 0)
 # dmpc_quad.run_full()
-# # dmpc_quad.persist_results('data/runs/')
+# dmpc_quad.persist_results('data/runs/')
 
 # #%%
 # cmpc_lin = MPCCentralizedHomePeak(N, 'cent_lin', params)

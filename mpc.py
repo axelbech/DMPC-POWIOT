@@ -1,6 +1,7 @@
 from copy import copy
 from pickle import dumps
 import os
+import time
 
 from weakref import ref
 from casadi import *
@@ -202,7 +203,7 @@ class MPC():
         """
         
         for t in range(self.T):
-            print(f'time step {t}, pid = {os.getpid()}')
+            print(f'{self.name}: time step {t}, pid = {os.getpid()}')
             
             self.update_parameters(t) # prepare mpc params
             
@@ -233,19 +234,24 @@ class MPCDistributed(MPC):
         """
         t = 0
         while t < self.T:
-            print(f'time step {t}')
-            
+
             self.update_parameters(t) # prepare mpc params
             
             self.update_constraints() # prepare mpc start constraints
             
-            self.update_parameters_generic(
-                dual_variables=public_coordination['dual_variables']
-                )
-            
-            while t >= public_coordination['t']:
+            while t == public_coordination['t']:
+                while not private_coordination['f_opt'] == None:
+                    time.sleep(0.05)
+                if not t == public_coordination['t']:
+                    break
+                self.update_parameters_generic(
+                    dual_variables=public_coordination['dual_variables']
+                    )
+                dv_fst = public_coordination['dual_variables'][0]
+                print(f'{self.name}: time step {t}, pid = {os.getpid()}, w0 = {self.w0.master[0]}')
                 w_opt, f_opt = self.solve_optimization()
-                self.set_optimal_state(w_opt)
+                self.set_optimal_state(self.w(w_opt))
+                self.set_initial_state(self.w(w_opt))
                 private_coordination['dual_update_contribution'] = \
                     self.get_dual_update_contribution()
                 private_coordination['f_opt'] = f_opt
@@ -253,6 +259,8 @@ class MPCDistributed(MPC):
             self.update_trajectory()
             
             self.update_initial_state()
+            
+            t = public_coordination['t']
 
         return_dict['traj_full'] = self.traj_full
         return_dict['params'] = self.params
@@ -461,14 +469,6 @@ class MPCSingleHomeDistributed(MPCDistributed, MPCSingleHome):
             #     self.w['input', k, 'P_hp'] # From dual decomposition, dual_var like a power price
         
         return J
-    
-    def dummy_func(self):
-        print('starting func')
-        for _ in range(10000):
-            self.w0['state', 0, 'room_temp'] = 19
-            self.w0['state', 0, 'room_temp'] = 20
-        print('finishing func')
-        return self.w0
     
     def get_dual_update_contribution(self):
         return np.array(vertcat(*self.w_opt['input',:, 'P_hp'])).flatten()

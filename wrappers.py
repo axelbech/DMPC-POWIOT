@@ -3,6 +3,7 @@ from datetime import datetime
 # from pickle import dump
 import json
 import os
+import time
 from multiprocessing import Manager, Process
 
 class MPCWrapper():
@@ -12,6 +13,13 @@ class MPCWrapper():
         T: int,
         controllers: list
         ):
+        """Creates a wrapper for centralized or decentralized MPCs
+
+        Args:
+            N (int): mpc prediction horizon
+            T (int): time steps
+            controllers (list): list of controller objects
+        """
         self.N = N
         self.T = T
         self.controllers = controllers
@@ -64,7 +72,7 @@ class DMPCWrapper(MPCWrapper):
         
     def get_coordination_dict(self):
         public_coordination = self.manager.dict(
-            dual_variables=None,
+            dual_variables=np.zeros(self.N-1),
             t=None
         )
         private_coordination = self.manager.dict() # Nested managed dict
@@ -83,7 +91,6 @@ class DMPCWrapper(MPCWrapper):
     
     def run_full(self):
         process_list = []
-        
         process = Process(
             target=self.coordinator.run_full,
             args=(
@@ -92,6 +99,7 @@ class DMPCWrapper(MPCWrapper):
                 self.coordination_dict['private']
             )
         )
+        print(f'starting dmpc coordinator')
         process.start()
         process_list.append(process)
         
@@ -104,6 +112,7 @@ class DMPCWrapper(MPCWrapper):
                     self.coordination_dict['private'][controller.name]
                     )
                 )
+            print(f'starting controller {controller.name}')
             process.start()
             process_list.append(process)
             
@@ -116,6 +125,7 @@ class DMPCWrapper(MPCWrapper):
         file_name = coordinator_type + '.json'
         with open(path + folder_name + '/' + file_name, 'w') as file:
             json.dump(self.coordinator_results, file, indent=4)
+
 
 class DMPCCoordinator():
     def __init__(
@@ -190,7 +200,7 @@ class DMPCCoordinator():
             managed private controller dicts
         """
         
-        it = 0
+        
         maxIt = 20
         
         self.f_sum_last = 1e6
@@ -198,26 +208,32 @@ class DMPCCoordinator():
         dv_tol = 0.1
         for t in range(self.T):
             public_coordination['t'] = t
-            for controller in self.controllers:
-                private_coordination[controller]['f_opt'] = None
+            # for controller in self.controllers:
+            #     private_coordination[controller]['f_opt'] = None
             
-            dual_variables_last = np.copy(self.dual_variables)
-            dual_updates = np.zeros_like(self.dual_variables)
-            f_sum = 0
-            
-            while True:
-                is_all_controllers_ready = True
-                for controller in self.controllers:
-                    if not private_coordination[controller]['f_opt']:
-                        is_all_controllers_ready = False
-                if is_all_controllers_ready:
-                    break
-                
+
+            print(f'\nstarting dual decomp at time step {t}, pid = {os.getpid()}')
+            it = 0
             while it < maxIt:
+                
+                for controller in self.controllers:
+                    private_coordination[controller]['f_opt'] = None
+                
+                while True:
+                    is_all_controllers_ready = True
+                    for controller in self.controllers:
+                        if not private_coordination[controller]['f_opt']:
+                            is_all_controllers_ready = False
+                    if is_all_controllers_ready:
+                        break
+                    time.sleep(0.05)
+                
+                f_sum = 0
+                dual_updates = np.zeros_like(self.dual_variables)
+                dual_variables_last = np.copy(self.dual_variables)
                 for controller in self.controllers:
                     f_sum += private_coordination[controller]['f_opt']
-                    dual_updates += private_coordination[controller][
-                        'dual_update_contribution']
+                    dual_updates += private_coordination[controller]['dual_update_contribution']
                     
                 dual_updates += self.dual_update_constant
                 dual_update_step_size = 20 / np.sqrt(1+it)
@@ -230,6 +246,11 @@ class DMPCCoordinator():
                 f_diff = np.abs(f_sum - self.f_sum_last)
                 self.f_sum_last = f_sum
                 dv_diff = (np.abs(self.dual_variables-dual_variables_last)).mean()
+                print(
+                f'dual decomp iteration {it} , time step {t}, '
+                f'f_diff = {f_diff.flatten()} '
+                f'dual diff = {round(dv_diff,4)}'
+                )
                 
                 if f_diff < f_tol and dv_diff < dv_tol:
                     break
@@ -242,11 +263,6 @@ class DMPCCoordinator():
             
         return_dict['dv_traj'] = self.dual_variables_traj
             
-                
-                
-            
-
-
 
 
 class MPCsWrapper():
@@ -403,12 +419,11 @@ class DistributedMPC(MPCsWrapper):
         dv_tol = 0.1
         
         while it < maxIt:
-            
+            w0 = list(self.mpcs.values())[0].w0.master[0]
+            print(f'w0 = {w0}')
             f_sum = 0
             dual_updates = np.zeros_like(self.dual_variables)
-            
             dual_variables_last = np.copy(self.dual_variables)
-            
             self.update_mpc_dual_variables()
             
             for mpc in self.mpcs.values():
@@ -433,7 +448,7 @@ class DistributedMPC(MPCsWrapper):
             print(
                 f'dual decomp iteration {it} '
                 f'f_diff = {f_diff} '
-                f'dual diff = {dv_diff}'
+                f'dual diff = {round(dv_diff,2)}'
                 )
             
             if f_diff < f_tol and dv_diff < dv_tol:
