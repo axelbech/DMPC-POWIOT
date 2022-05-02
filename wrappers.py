@@ -64,7 +64,7 @@ class DMPCWrapper(MPCWrapper):
         
     def get_coordination_dict(self):
         public_coordination = self.manager.dict(
-            dual_variable=None,
+            dual_variables=None,
             t=None
         )
         private_coordination = self.manager.dict() # Nested managed dict
@@ -174,12 +174,12 @@ class DMPCCoordinator():
         """
         self.dual_variables_traj[t, t:t+self.N-1] = self.dual_variables
 
-    def persist_results(self, path=''):
-        folder_name = super().persist_results(path)
-        dv_list = self.dual_variables_traj.tolist()
-        file_name = 'dv_traj.json'
-        with open(path + folder_name + '/' + file_name, 'w') as file:
-            json.dump(dv_list, file, indent=4)
+    # def persist_results(self, path=''):
+    #     folder_name = super().persist_results(path)
+    #     dv_list = self.dual_variables_traj.tolist()
+    #     file_name = 'dv_traj.json'
+    #     with open(path + folder_name + '/' + file_name, 'w') as file:
+    #         json.dump(dv_list, file, indent=4)
 
     def run_full(
         self,
@@ -196,8 +196,22 @@ class DMPCCoordinator():
             contribution and optimal cost function value, contains multiple 
             managed private controller dicts
         """
+        
+        
+        it = 0
+        maxIt = 20
+        
+        self.f_sum_last = 1e6
+        f_tol = 1e-1 * self.N
+        dv_tol = 0.1
         for t in range(self.T):
             public_coordination['t'] = t
+            for controller in self.controllers:
+                private_coordination[controller]['f_opt'] = None
+            
+            dual_variables_last = np.copy(self.dual_variables)
+            dual_updates = np.zeros_like(self.dual_variables)
+            f_sum = 0
             
             while True:
                 is_all_controllers_ready = True
@@ -206,6 +220,35 @@ class DMPCCoordinator():
                         is_all_controllers_ready = False
                 if is_all_controllers_ready:
                     break
+                
+            while it < maxIt:
+                for controller in self.controllers:
+                    f_sum += private_coordination[controller]['f_opt']
+                    dual_updates += private_coordination[controller][
+                        'dual_update_contribution']
+                    
+                dual_updates += self.dual_update_constant
+                dual_update_step_size = 20 / np.sqrt(1+it)
+                dual_updates *= dual_update_step_size
+                self.dual_variables += dual_updates
+                self.dual_variables[self.dual_variables < 0] = 0
+                
+                public_coordination['dual_variables'] = self.dual_variables
+                
+                f_diff = np.abs(f_sum - self.f_sum_last)
+                self.f_sum_last = f_sum
+                dv_diff = (np.abs(self.dual_variables-dual_variables_last)).mean()
+                
+                if f_diff < f_tol and dv_diff < dv_tol:
+                    break
+                
+                it += 1
+                
+            self.update_dual_variables_trajectory(t)
+            self.iterate_dual_variables()
+            public_coordination['dual_variables'] = self.dual_variables
+            
+                
                 
             
 

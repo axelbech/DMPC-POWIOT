@@ -258,7 +258,7 @@ class MPCDistributed(MPC):
         return_dict['params'] = self.params
         
     def get_dual_update_contribution(self):
-        """_summary_
+        """Get the controllers contribution to the dual variable update
 
         Returns:
             dv_contribution (list): dual variable update contribution
