@@ -174,13 +174,6 @@ class DMPCCoordinator():
         """
         self.dual_variables_traj[t, t:t+self.N-1] = self.dual_variables
 
-    # def persist_results(self, path=''):
-    #     folder_name = super().persist_results(path)
-    #     dv_list = self.dual_variables_traj.tolist()
-    #     file_name = 'dv_traj.json'
-    #     with open(path + folder_name + '/' + file_name, 'w') as file:
-    #         json.dump(dv_list, file, indent=4)
-
     def run_full(
         self,
         return_dict: dict,
@@ -196,7 +189,6 @@ class DMPCCoordinator():
             contribution and optimal cost function value, contains multiple 
             managed private controller dicts
         """
-        
         
         it = 0
         maxIt = 20
@@ -247,6 +239,8 @@ class DMPCCoordinator():
             self.update_dual_variables_trajectory(t)
             self.iterate_dual_variables()
             public_coordination['dual_variables'] = self.dual_variables
+            
+        return_dict['dv_traj'] = self.dual_variables_traj
             
                 
                 

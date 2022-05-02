@@ -240,7 +240,7 @@ class MPCDistributed(MPC):
             self.update_constraints() # prepare mpc start constraints
             
             self.update_parameters_generic(
-                dual_variables=public_coordination['dual_variable']
+                dual_variables=public_coordination['dual_variables']
                 )
             
             while t >= public_coordination['t']:
@@ -432,7 +432,7 @@ class MPCSingleHome(MPC):
             opt_params['spot_price'][t:t+self.N-1]
         )
            
-class MPCSingleHomeDistributed(MPCSingleHome):
+class MPCSingleHomeDistributed(MPCDistributed, MPCSingleHome):
         
     def get_parameters_structure(self):
         return struct_symMX([
@@ -474,7 +474,7 @@ class MPCSingleHomeDistributed(MPCSingleHome):
         return np.array(vertcat(*self.w_opt['input',:, 'P_hp'])).flatten()
 
 
-class MPCPeakStateDistributed(MPC):
+class MPCPeakStateDistributed(MPCDistributed):
         
     def get_decision_variables(self):
         return struct_symMX([entry('peak_state', repeat=self.N-1)])
