@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 
 from mpc import MPCCentralizedHomePeak, MPCCentralizedHomePeakQuadratic, MPCPeakStateDistributedQuadratic, MPCSingleHome, MPCSingleHomeDistributed, MPCPeakStateDistributed
-from dmpc import MPCsWrapper, DistributedMPC
+from wrappers import MPCsWrapper, DistributedMPC
 
 N = 288
 T = 288

@@ -1,38 +1,213 @@
 import numpy as np
 from datetime import datetime
 # from pickle import dump
-from json import dump
+import json
 import os
+from multiprocessing import Manager, Process
 
-
-class DMPCCoordinator():
+class MPCWrapper():
     def __init__(
         self,
         N: int,
         T: int,
         controllers: list
         ):
-        """_summary_
+        self.N = N
+        self.T = T
+        self.controllers = controllers
+        
+        self.manager = Manager()
+        self.controller_results = {
+            ctrl.name: self.manager.dict() for ctrl in controllers
+            }
+        
+    def run_full(self):
+        process_list = []
+        for controller in self.controllers:
+            process = Process(
+                target=controller.run_full, 
+                args=(self.controller_results[controller.name])
+                )
+            process.start()
+            process_list.append(process)
+        for process in process_list:
+            process.join()
+    
+    def persist_results(self, path=''):
+        time = datetime.now().strftime("%Y%m%d-%H%M%S")
+        wrapper_type = type(self).__name__
+        folder_name = f'{wrapper_type}-N{self.N}T{self.T}-{time}'
+        os.mkdir(path + folder_name)
+        for mpc in self.controllers.values():
+            mpc_type = type(mpc).__name__
+            mpc_name = mpc.name
+            f_name = f'{mpc_type}-{mpc_name}.json'
+            mpc_dict = self.controller_results[mpc_name] #dict(traj_full=mpc.traj_full, params=mpc.params)
+            with open(path + folder_name + '/' + f_name, 'w') as file:
+                json.dump(mpc_dict, file, indent=4)
+                # json.dump(mpc_dict, file)
+        return folder_name
+    
+
+class DMPCWrapper(MPCWrapper):
+    def __init__(
+        self, 
+        N: int,
+        T: int, 
+        controllers: list,
+        coordinator
+        ):
+        super().__init__(N, T, controllers) 
+        self.coordinator = coordinator
+        self.coordinator_results = self.manager.dict()
+        self.coordination_dict = self.get_coordination_dict()
+        
+    def get_coordination_dict(self):
+        public_coordination = self.manager.dict(
+            dual_variable=None,
+            t=None
+        )
+        private_coordination = self.manager.dict() # Nested managed dict
+        for controller in self.controllers:
+            controller_dict = self.manager.dict(
+                dual_update_contribution=None,
+                f_opt=None
+            )
+            private_coordination[controller.name] = controller_dict
+            
+        coordination_dict = dict(
+            public=public_coordination,
+            private=private_coordination
+        )
+        return coordination_dict
+    
+    def run_full(self):
+        process_list = []
+        
+        process = Process(
+            target=self.coordinator.run_full,
+            args=(
+                self.coordinator_results,
+                self.coordination_dict['public'],
+                self.coordination_dict['private']
+            )
+        )
+        process.start()
+        process_list.append(process)
+        
+        for controller in self.controllers:
+            process = Process(
+                target=controller.run_full, 
+                args=(
+                    self.controller_results[controller.name],
+                    self.coordination_dict['public'],
+                    self.coordination_dict['private'][controller.name]
+                    )
+                )
+            process.start()
+            process_list.append(process)
+            
+        for process in process_list:
+            process.join()
+        
+    def persist_results(self, path=''):
+        folder_name = super().persist_results(path)
+        coordinator_type = type(self.coordinator).__name__
+        file_name = coordinator_type + '.json'
+        with open(path + folder_name + '/' + file_name, 'w') as file:
+            json.dump(self.coordinator_results, file, indent=4)
+
+class DMPCCoordinator():
+    def __init__(
+        self,
+        N: int,
+        T: int,
+        controllers: list,
+        dual_update_constant: float
+        ):
+        """Create a DMPC coordinator object
 
         Args:
             N (int): mpc prediction horizon
             T (int): time steps
             controllers (list): names of controllers
+            dual_update_constant (float): constant value used in calculating 
+            the dual update
         """
         self.N = N
         self.T = T
         self.controllers = controllers
+        self.dual_update_constant = dual_update_constant
+        
+        self.dual_variables = self.get_dual_variables()
+        self.dual_variables_traj = self.get_dual_variables_trajectory()
+        
+    def get_dual_variables(self):
+        """Builds dual variables
 
-    def run_full(self, public_coordination: dict, private_coordination: dict):
+        Returns:
+            ndarray: dual variables
         """
+        return np.zeros(self.N-1)
+    
+    def get_dual_variables_trajectory(self):
+        """Builds the dual varaible trajectory
+
+        Returns:
+            ndarray: dual variable trajectory
+        """
+        dual_variables_traj = np.empty((self.T,self.N-1 + self.T))
+        dual_variables_traj[:] = np.nan
+        return dual_variables_traj
+    
+    def iterate_dual_variables(self):
+        """Prepare dual variables for next time step
+        """
+        self.dual_variables[:self.N-2] = self.dual_variables[1:]
+    
+    def update_dual_variables_trajectory(self, t):
+        """Update dual variables trajectory at given time with current dual 
+        variables
 
         Args:
+            t (int): time step
+        """
+        self.dual_variables_traj[t, t:t+self.N-1] = self.dual_variables
+
+    def persist_results(self, path=''):
+        folder_name = super().persist_results(path)
+        dv_list = self.dual_variables_traj.tolist()
+        file_name = 'dv_traj.json'
+        with open(path + folder_name + '/' + file_name, 'w') as file:
+            json.dump(dv_list, file, indent=4)
+
+    def run_full(
+        self,
+        return_dict: dict,
+        public_coordination: dict,
+        private_coordination: dict
+        ):
+        """Run the full simulation
+
+        Args:
+            return_dict (dict): for returning dual variable trajectory
             public_coordination (dict): to coordinate time and dual variable
             private_coordination (dict): to coordinate dual update 
-            contribution and optimal cost function value
+            contribution and optimal cost function value, contains multiple 
+            managed private controller dicts
         """
-
-
+        for t in range(self.T):
+            public_coordination['t'] = t
+            
+            while True:
+                is_all_controllers_ready = True
+                for controller in self.controllers:
+                    if not private_coordination[controller]['f_opt']:
+                        is_all_controllers_ready = False
+                if is_all_controllers_ready:
+                    break
+                
+            
 
 
 
@@ -94,8 +269,8 @@ class MPCsWrapper():
             f_name = f'{mpc_type}-{mpc_name}.json'
             mpc_dict = dict(traj_full=mpc.traj_full, params=mpc.params)
             with open(path + folder_name + '/' + f_name, 'w') as file:
-                dump(mpc_dict, file, indent=4)
-                # dump(mpc_dict, file)
+                json.dump(mpc_dict, file, indent=4)
+                # json.dump(mpc_dict, file)
         return folder_name
             
     def run_full(self):
@@ -179,7 +354,7 @@ class DistributedMPC(MPCsWrapper):
         dv_list = self.dual_variables_traj.tolist()
         file_name = 'dv_traj.json'
         with open(path + folder_name + '/' + file_name, 'w') as file:
-            dump(dv_list, file, indent=4)
+            json.dump(dv_list, file, indent=4)
             
         
         
