@@ -285,7 +285,8 @@ class MPCSingleHome(MPC):
                 entry('COP'),
                 entry('outdoor_temperature', repeat=self.N),
                 entry('reference_temperature', repeat=self.N),
-                entry('spot_price', repeat=self.N-1)
+                entry('spot_price', repeat=self.N-1),
+                entry('ext_power', repeat=self.N-1)
             ])
         
     def get_dynamics_functions(self):
@@ -439,6 +440,9 @@ class MPCSingleHome(MPC):
         self.p_num['spot_price'] = (
             opt_params['spot_price'][t:t+self.N-1]
         )
+        self.p_num['ext_power'] = (
+            opt_params['ext_power'][t:t+self.N-1]
+        )
            
 class MPCSingleHomeDistributed(MPCDistributed, MPCSingleHome):
         
@@ -452,6 +456,7 @@ class MPCSingleHomeDistributed(MPCDistributed, MPCSingleHome):
                 entry('outdoor_temperature', repeat=self.N),
                 entry('reference_temperature', repeat=self.N),
                 entry('spot_price', repeat=self.N-1),
+                entry('ext_power', repeat=self.N-1),
                 entry('dual_variables', repeat=self.N-1)
             ])
     
@@ -471,7 +476,10 @@ class MPCSingleHomeDistributed(MPCDistributed, MPCSingleHome):
         return J
     
     def get_dual_update_contribution(self):
-        return np.array(vertcat(*self.w_opt['input',:, 'P_hp'])).flatten()
+        heat_pump_power=np.array(vertcat(*self.w_opt['input',:, 'P_hp'])).flatten()
+        ext_power = np.array(vertcat(*self.p_num['ext_power', :])).flatten()
+        total_power = heat_pump_power + ext_power
+        return total_power
 
 
 class MPCPeakStateDistributed(MPCDistributed):
@@ -574,7 +582,8 @@ class MPCCentralizedHomePeak(MPC):
                 entry('COP'),
                 entry('outdoor_temperature', repeat=self.N),
                 entry('reference_temperature', repeat=self.N),
-                entry('spot_price', repeat=self.N-1)
+                entry('spot_price', repeat=self.N-1),
+                entry('ext_power', repeat=self.N-1)
             ])
             param_list.append(entry(home, struct=home_struct))
             
@@ -741,6 +750,7 @@ class MPCCentralizedHomePeak(MPC):
             power_sum = 0
             for home in self.homes:
                 power_sum += self.w[home, 'P_hp', k]
+                power_sum += self.p[home, 'ext_power', k]
             g.append(self.w['peak_state', k] - power_sum) # peak state must be greater than sum of power at k
             lbg.append(0)
             ubg.append(inf)
@@ -790,6 +800,9 @@ class MPCCentralizedHomePeak(MPC):
             )
             self.p_num[home, 'spot_price'] = (
                 opt_params['spot_price'][t:t+self.N-1]
+            )
+            self.p_num[home, 'ext_power'] = (
+                opt_params['ext_power'][t:t+self.N-1]
             )
         
 class MPCCentralizedHomePeakQuadratic(MPCCentralizedHomePeak):

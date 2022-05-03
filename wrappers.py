@@ -46,11 +46,11 @@ class MPCWrapper():
         wrapper_type = type(self).__name__
         folder_name = f'{wrapper_type}-N{self.N}T{self.T}-{time}'
         os.mkdir(path + folder_name)
-        for mpc in self.controllers.values():
+        for mpc in self.controllers:
             mpc_type = type(mpc).__name__
             mpc_name = mpc.name
             f_name = f'{mpc_type}-{mpc_name}.json'
-            mpc_dict = self.controller_results[mpc_name] #dict(traj_full=mpc.traj_full, params=mpc.params)
+            mpc_dict = dict(self.controller_results[mpc_name]) #dict(traj_full=mpc.traj_full, params=mpc.params)
             with open(path + folder_name + '/' + f_name, 'w') as file:
                 json.dump(mpc_dict, file, indent=4)
                 # json.dump(mpc_dict, file)
@@ -124,7 +124,7 @@ class DMPCWrapper(MPCWrapper):
         coordinator_type = type(self.coordinator).__name__
         file_name = coordinator_type + '.json'
         with open(path + folder_name + '/' + file_name, 'w') as file:
-            json.dump(self.coordinator_results, file, indent=4)
+            json.dump(dict(self.coordinator_results), file, indent=4)
 
 
 class DMPCCoordinator():
@@ -206,11 +206,12 @@ class DMPCCoordinator():
         self.f_sum_last = 1e6
         f_tol = 1e-1 * self.N
         dv_tol = 0.1
-        for t in range(self.T):
+        
+        t = 0
+        public_coordination['t'] = t
+        # for t in range(self.T):
+        while t < self.T:
             public_coordination['t'] = t
-            # for controller in self.controllers:
-            #     private_coordination[controller]['f_opt'] = None
-            
 
             print(f'\nstarting dual decomp at time step {t}, pid = {os.getpid()}')
             it = 0
@@ -261,7 +262,13 @@ class DMPCCoordinator():
             self.iterate_dual_variables()
             public_coordination['dual_variables'] = self.dual_variables
             
-        return_dict['dv_traj'] = self.dual_variables_traj
+            t += 1
+            public_coordination['t'] = t
+            
+        for controller in self.controllers: # For terminating mpcs
+            private_coordination[controller]['f_opt'] = None
+            
+        return_dict['dv_traj'] = self.dual_variables_traj.tolist()
             
 
 

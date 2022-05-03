@@ -38,3 +38,5 @@ for t in range(N+T):
     
 with open('data/housedata/pwr_ext_5m.json', 'w') as file:
     json.dump(list(pwr_ext_5m), file)
+
+

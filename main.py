@@ -11,8 +11,8 @@ from matplotlib import cm
 from mpc import MPCCentralizedHomePeak, MPCCentralizedHomePeakQuadratic, MPCPeakStateDistributedQuadratic, MPCSingleHome, MPCSingleHomeDistributed, MPCPeakStateDistributed
 from wrappers import MPCsWrapper, DistributedMPC, DMPCWrapper, DMPCCoordinator
 
-N = 288
-T = 288
+N = 50
+T = 2
 
 n_houses = 2
 p_max = 1.5
@@ -31,6 +31,10 @@ ref_temp_fixed = 22 * np.ones((N+T,))
 with open(r'data\spotdata\spot_price_5m.json', 'r') as file:
     spot_price = json.load(file)
     
+with open(r'data\housedata\pwr_ext_5m.json', 'r') as file:
+    ext_power = json.load(file)
+ext_power *= 0.6
+    
 with open('data/housedata/outdoor_temp_5m.json', 'r') as file:
     outdoor_temperature = json.load(file)
 
@@ -46,6 +50,7 @@ params = {
             'outdoor_temperature': outdoor_temperature,
             'reference_temperature': list(ref_temp_fixed-2), # reference_temperature,
             'spot_price': spot_price,
+            'ext_power': ext_power,
         },
         'bounds': {
             'P_max': p_max,
@@ -65,6 +70,7 @@ params = {
             'outdoor_temperature': outdoor_temperature,
             'reference_temperature': list(ref_temp_fixed+2), #reference_temperature,
             'spot_price': spot_price,
+            'ext_power': ext_power
         },
         'bounds': {
             'P_max': p_max,
@@ -95,6 +101,8 @@ if __name__ == '__main__':
     coordinator = DMPCCoordinator(N, T, [ctrl for ctrl in mpcs_lin], 0)
     wrapper = DMPCWrapper(N, T, [ctrl for ctrl in mpcs_lin.values()], coordinator)
     wrapper.run_full()
+    wrapper.persist_results('data/runs/')
+#%%
 
 #%%
 
