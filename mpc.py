@@ -564,11 +564,11 @@ class MPCPeakStateDistributedQuadratic(MPCPeakStateDistributed):
 
 class MPCCentralizedHomePeak(MPC):
     
-    def __init__(self, N: int, name: str, params: dict):
+    def __init__(self, N: int, T: int, name: str, params: dict):
         homes = list(params.keys())
         if 'peak' in homes: homes.remove('peak')
         self.homes = homes
-        super().__init__(N, name, params)
+        super().__init__(N, T, name, params)
         
     def get_parameters_structure(self):
         param_list = []

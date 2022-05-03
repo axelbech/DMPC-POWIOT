@@ -9,10 +9,10 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 
 from mpc import MPCCentralizedHomePeak, MPCCentralizedHomePeakQuadratic, MPCPeakStateDistributedQuadratic, MPCSingleHome, MPCSingleHomeDistributed, MPCPeakStateDistributed
-from wrappers import MPCsWrapper, DistributedMPC, DMPCWrapper, DMPCCoordinator
+from wrappers import MPCWrapper, MPCsWrapper, DistributedMPC, DMPCWrapper, DMPCCoordinator
 
 N = 50
-T = 2
+T = 50
 
 n_houses = 2
 p_max = 1.5
@@ -31,10 +31,13 @@ ref_temp_fixed = 22 * np.ones((N+T,))
 with open(r'data\spotdata\spot_price_5m.json', 'r') as file:
     spot_price = json.load(file)
     
-with open(r'data\housedata\pwr_ext_5m.json', 'r') as file:
+with open(r'data\power\pwr_ext_avg.json', 'r') as file:
     ext_power = json.load(file)
-ext_power *= 0.6
-    
+with open(r'data\power\pwr_ext_5m_1129.json', 'r') as file:
+    pwr_1129 = json.load(file)
+ext_power = (np.array(ext_power) * 0.6).tolist()
+pwr_1129 = (np.array(pwr_1129) * 0.6).tolist()
+
 with open('data/housedata/outdoor_temp_5m.json', 'r') as file:
     outdoor_temperature = json.load(file)
 
@@ -85,24 +88,40 @@ params = {
             'peak_weight': 20
         },
         'bounds': {
-            'max_total_power': n_houses * p_max
+            'max_total_power': n_houses * 3
         },
         'initial_state': {}
     }
 }
 
 #%%
+# if __name__ == '__main__':
+#     mpcs_lin = dict(
+#         axel = MPCSingleHomeDistributed(N, T, 'axel', params['axel']),
+#         seb =  MPCSingleHomeDistributed(N, T, 'seb', params['seb']),
+#         peak = MPCPeakStateDistributedQuadratic(N, T, 'peak', params['peak'])
+#         )
+#     coordinator = DMPCCoordinator(N, T, [ctrl for ctrl in mpcs_lin], 0)
+#     wrapper = DMPCWrapper(N, T, [ctrl for ctrl in mpcs_lin.values()], coordinator)
+#     wrapper.run_full()
+#     wrapper.persist_results('data/runs/')
+#%%
+
+# if __name__ == '__main__':
+#     cmpc_lin = MPCCentralizedHomePeakQuadratic(N, T, 'cent_quad', params)
+#     wrapper = MPCWrapper(N, T, [cmpc_lin])
+#     wrapper.run_full()
+#     wrapper.persist_results('data/runs/')
+    
+#%%
 if __name__ == '__main__':
-    mpcs_lin = dict(
-        axel = MPCSingleHomeDistributed(N, T, 'axel', params['axel']),
-        seb =  MPCSingleHomeDistributed(N, T, 'seb', params['seb']),
-        peak = MPCPeakStateDistributedQuadratic(N, T, 'peak', params['peak'])
+    mpcs = dict(
+        axel = MPCSingleHome(N, T, 'axel', params['axel']),
+        seb =  MPCSingleHome(N, T, 'seb', params['seb'])
         )
-    coordinator = DMPCCoordinator(N, T, [ctrl for ctrl in mpcs_lin], 0)
-    wrapper = DMPCWrapper(N, T, [ctrl for ctrl in mpcs_lin.values()], coordinator)
+    wrapper = MPCWrapper(N, T, [ctrl for ctrl in mpcs.values()])
     wrapper.run_full()
     wrapper.persist_results('data/runs/')
-#%%
 
 #%%
 

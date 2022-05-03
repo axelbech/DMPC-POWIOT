@@ -34,7 +34,7 @@ class MPCWrapper():
         for controller in self.controllers:
             process = Process(
                 target=controller.run_full, 
-                args=(self.controller_results[controller.name])
+                args=(self.controller_results[controller.name],)
                 )
             process.start()
             process_list.append(process)
@@ -213,7 +213,7 @@ class DMPCCoordinator():
         while t < self.T:
             public_coordination['t'] = t
 
-            print(f'\nstarting dual decomp at time step {t}, pid = {os.getpid()}')
+            print(f'\n\nstarting dual decomp at time step {t}, pid = {os.getpid()}')
             it = 0
             while it < maxIt:
                 
