@@ -30,6 +30,8 @@ class MPCWrapper():
             }
         
     def run_full(self):
+        time_start = time.time()
+        
         process_list = []
         for controller in self.controllers:
             process = Process(
@@ -40,12 +42,19 @@ class MPCWrapper():
             process_list.append(process)
         for process in process_list:
             process.join()
+            
+        time_end = time.time()
+        run_time_seconds = time_end - time_start
+        print(f'Running time = {run_time_seconds} seconds')
+        self.run_time_seconds = run_time_seconds
     
     def persist_results(self, path=''):
         time = datetime.now().strftime("%Y%m%d-%H%M%S")
         wrapper_type = type(self).__name__
         folder_name = f'{wrapper_type}-N{self.N}T{self.T}-{time}'
         os.mkdir(path + folder_name)
+        with open(path + folder_name + '/run_time_seconds.json', 'w') as file:
+            json.dump(self.run_time_seconds, file, indent=4)
         for mpc in self.controllers:
             mpc_type = type(mpc).__name__
             mpc_name = mpc.name
@@ -90,6 +99,8 @@ class DMPCWrapper(MPCWrapper):
         return coordination_dict
     
     def run_full(self):
+        time_start = time.time()
+        
         process_list = []
         process = Process(
             target=self.coordinator.run_full,
@@ -118,6 +129,11 @@ class DMPCWrapper(MPCWrapper):
             
         for process in process_list:
             process.join()
+            
+        time_end = time.time()
+        run_time_seconds = time_end - time_start
+        print(f'Running time = {run_time_seconds} seconds')
+        self.run_time_seconds = run_time_seconds
         
     def persist_results(self, path=''):
         folder_name = super().persist_results(path)

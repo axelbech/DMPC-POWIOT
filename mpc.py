@@ -280,11 +280,13 @@ class MPCSingleHome(MPC):
         return struct_symMX([
                 entry('energy_weight'),
                 entry('comfort_weight'),
+                entry('slack_min_weight'),
                 entry('rho_out'),
                 entry('rho_in'),
                 entry('COP'),
                 entry('outdoor_temperature', repeat=self.N),
                 entry('reference_temperature', repeat=self.N),
+                entry('min_temperature', repeat=self.N),
                 entry('spot_price', repeat=self.N-1),
                 entry('ext_power', repeat=self.N-1)
             ])
@@ -315,7 +317,11 @@ class MPCSingleHome(MPC):
         return wall_func, room_func
 
     def get_decision_variables(self):
-        MPC_states = struct_symMX([entry('room_temp'), entry('wall_temp')])
+        MPC_states = struct_symMX([
+            entry('room_temp'), 
+            entry('wall_temp'),
+            entry('slack_temp')
+            ])
         MPC_inputs = struct_symMX([entry('P_hp')])
 
         w = struct_symMX([
@@ -339,6 +345,8 @@ class MPCSingleHome(MPC):
         lbw['input',:,'P_hp'] = 0
         ubw['input',:,'P_hp'] = self.params['bounds']['P_max']
         
+        lbw['state',:,'slack_temp'] = 0
+        
         return lbw, ubw
     
     def get_numerical_parameters(self):
@@ -347,6 +355,7 @@ class MPCSingleHome(MPC):
         opt_params = self.params['opt_params']
         p_num['energy_weight'] = opt_params['energy_weight']
         p_num['comfort_weight'] = opt_params['comfort_weight']
+        p_num['slack_min_weight'] = opt_params['slack_min_weight']
         p_num['rho_out'] = opt_params['rho_out']
         p_num['rho_in'] = opt_params['rho_in']
         p_num['COP'] = opt_params['COP']
@@ -365,6 +374,7 @@ class MPCSingleHome(MPC):
         for k in range(self.N): 
             J += self.p['comfort_weight'] * \
             (self.w['state', k, 'room_temp'] - self.p['reference_temperature',k])**2
+            J += self.p['slack_min_weight']*self.w['state',k,'slack_temp']**2
         
         for k in range(self.N - 1): # Input not defined for the last timestep
             J += self.p['energy_weight'] * self.p['spot_price', k]\
@@ -407,6 +417,14 @@ class MPCSingleHome(MPC):
             g.append(room_plus - self.w['state', k+1, 'room_temp'])
             lbg.append(0)
             ubg.append(0)
+            
+            g.append(self.p['min_temperature', k] 
+                     - self.w['state', k, 'room_temp'] 
+                     - self.w['state', k, 'slack_temp'])
+            lbg.append(-inf)
+            ubg.append(0)
+            
+            g.append
                 
         return g, lbg, ubg
     
@@ -437,11 +455,17 @@ class MPCSingleHome(MPC):
         self.p_num['reference_temperature'] = (
             opt_params['reference_temperature'][t:t+self.N]
         )
+        self.p_num['min_temperature'] = (
+            opt_params['min_temperature'][t:t+self.N]
+        )
         self.p_num['spot_price'] = (
             opt_params['spot_price'][t:t+self.N-1]
         )
         self.p_num['ext_power'] = (
-            opt_params['ext_power'][t:t+self.N-1]
+            opt_params['ext_power_avg'][t:t+self.N-1]
+        )
+        self.p_num['ext_power', 0] = (
+            opt_params['ext_power_real'][t]
         )
            
 class MPCSingleHomeDistributed(MPCDistributed, MPCSingleHome):
@@ -450,11 +474,13 @@ class MPCSingleHomeDistributed(MPCDistributed, MPCSingleHome):
         return struct_symMX([
                 entry('energy_weight'),
                 entry('comfort_weight'),
+                entry('slack_min_weight'),
                 entry('rho_out'),
                 entry('rho_in'),
                 entry('COP'),
                 entry('outdoor_temperature', repeat=self.N),
                 entry('reference_temperature', repeat=self.N),
+                entry('min_temperature', repeat=self.N),
                 entry('spot_price', repeat=self.N-1),
                 entry('ext_power', repeat=self.N-1),
                 entry('dual_variables', repeat=self.N-1)
@@ -465,6 +491,7 @@ class MPCSingleHomeDistributed(MPCDistributed, MPCSingleHome):
         for k in range(self.N): 
             J += self.p['comfort_weight'] * \
             (self.w['state', k, 'room_temp'] - self.p['reference_temperature',k])**2
+            J += self.p['slack_min_weight']*self.w['state',k,'slack_temp']**2
         
         for k in range(self.N - 1): # Input not defined for the last timestep
             J += self.p['energy_weight'] * self.p['spot_price', k]\
@@ -577,11 +604,13 @@ class MPCCentralizedHomePeak(MPC):
             home_struct = struct_symMX([
                 entry('energy_weight'),
                 entry('comfort_weight'),
+                entry('slack_min_weight'),
                 entry('rho_out'),
                 entry('rho_in'),
                 entry('COP'),
                 entry('outdoor_temperature', repeat=self.N),
                 entry('reference_temperature', repeat=self.N),
+                entry('min_temperature', repeat=self.N),
                 entry('spot_price', repeat=self.N-1),
                 entry('ext_power', repeat=self.N-1)
             ])
@@ -628,6 +657,7 @@ class MPCCentralizedHomePeak(MPC):
             home_struct = struct_symMX([
                 entry('room_temp', repeat=self.N),
                 entry('wall_temp', repeat=self.N),
+                entry('slack_temp', repeat=self.N),
                 entry('P_hp', repeat=self.N-1)
             ])
             state_list.append(entry(home, struct=home_struct))
@@ -655,6 +685,8 @@ class MPCCentralizedHomePeak(MPC):
             lbw[home, 'P_hp', :] = 0
             ubw[home, 'P_hp', :] = self.params[home]['bounds']['P_max']
             
+            lbw[home, 'slack_temp', :] = 0
+            
         lbw['peak_state', :] = 0
         ubw['peak_state', :] = self.params['peak']['bounds']['max_total_power']
         
@@ -667,6 +699,7 @@ class MPCCentralizedHomePeak(MPC):
             opt_params = self.params[home]['opt_params']
             p_num[home,'energy_weight'] = opt_params['energy_weight']
             p_num[home,'comfort_weight'] = opt_params['comfort_weight']
+            p_num[home,'slack_min_weight'] = opt_params['slack_min_weight']
             p_num[home,'rho_out'] = opt_params['rho_out']
             p_num[home,'rho_in'] = opt_params['rho_in']
             p_num[home,'COP'] = opt_params['COP']
@@ -693,6 +726,7 @@ class MPCCentralizedHomePeak(MPC):
             for k in range(self.N):
                 J += self.p[home, 'comfort_weight'] * \
     (self.w[home, 'room_temp', k] - self.p[home, 'reference_temperature', k])**2
+                J += self.p[home,'slack_min_weight']*self.w[home,'slack_temp',k]**2
     
             for k in range(self.N-1):
                 J += self.p[home, 'energy_weight'] * \
@@ -700,6 +734,7 @@ class MPCCentralizedHomePeak(MPC):
 
         for k in range(self.N-1):
             J += self.p['peak_state', 'peak_weight'] * self.w['peak_state', k]
+            
         
         return J
     
@@ -740,6 +775,12 @@ class MPCCentralizedHomePeak(MPC):
                 ubg.append(0)
                 g.append(room_plus - self.w[home, 'room_temp', k+1])
                 lbg.append(0)
+                ubg.append(0)
+                
+                g.append(self.p[home, 'min_temperature', k] 
+                        - self.w[home, 'room_temp', k] 
+                        - self.w[home, 'slack_temp', k])
+                lbg.append(-inf)
                 ubg.append(0)
             
         for k in range(self.N - 2):
@@ -798,11 +839,17 @@ class MPCCentralizedHomePeak(MPC):
             self.p_num[home, 'reference_temperature'] = (
                 opt_params['reference_temperature'][t:t+self.N]
             )
+            self.p_num[home, 'min_temperature'] = (
+            opt_params['min_temperature'][t:t+self.N]
+            )
             self.p_num[home, 'spot_price'] = (
                 opt_params['spot_price'][t:t+self.N-1]
             )
             self.p_num[home, 'ext_power'] = (
-                opt_params['ext_power'][t:t+self.N-1]
+                opt_params['ext_power_avg'][t:t+self.N-1]
+            )
+            self.p_num[home, 'ext_power', 0] = (
+                opt_params['ext_power_real'][t]
             )
         
 class MPCCentralizedHomePeakQuadratic(MPCCentralizedHomePeak):
@@ -812,9 +859,12 @@ class MPCCentralizedHomePeakQuadratic(MPCCentralizedHomePeak):
             for k in range(self.N):
                 J += self.p[home, 'comfort_weight'] * \
     (self.w[home, 'room_temp', k] - self.p[home, 'reference_temperature', k])**2
+                J += self.p[home,'slack_min_weight']*self.w[home,'slack_temp',k]**2
+                
             for k in range(self.N-1):
                 J += self.p[home, 'energy_weight'] * \
                     self.p[home, 'spot_price', k] * self.w[home, 'P_hp', k]
+                    
         for k in range(self.N-1):
             J += self.p['peak_state', 'peak_weight'] * self.w['peak_state', k]**2
         return J

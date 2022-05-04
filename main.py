@@ -11,8 +11,8 @@ from matplotlib import cm
 from mpc import MPCCentralizedHomePeak, MPCCentralizedHomePeakQuadratic, MPCPeakStateDistributedQuadratic, MPCSingleHome, MPCSingleHomeDistributed, MPCPeakStateDistributed
 from wrappers import MPCWrapper, MPCsWrapper, DistributedMPC, DMPCWrapper, DMPCCoordinator
 
-N = 50
-T = 50
+N = 288
+T = 288
 
 n_houses = 2
 p_max = 1.5
@@ -23,6 +23,8 @@ reference_temperature = list(np.fromfunction(
     lambda x: 5 * np.sin(x/10) + 22, (N+T,)
     ))
 ref_temp_fixed = 22 * np.ones((N+T,))
+
+min_temp = 15 * np.ones((N+T,))
 # def price_func_exp(x):
 #     return (1 + 0.7 *np.exp(-((x-96)/40)**2) + np.exp(-((x-216)/60)**2)
 #             + 0.7 *np.exp(-((x-96-288)/40)**2) + np.exp(-((x-216-288)/60)**2))
@@ -32,14 +34,18 @@ with open(r'data\spotdata\spot_price_5m.json', 'r') as file:
     spot_price = json.load(file)
     
 with open(r'data\power\pwr_ext_avg.json', 'r') as file:
-    ext_power = json.load(file)
+    ext_power_avg = json.load(file)
 with open(r'data\power\pwr_ext_5m_1129.json', 'r') as file:
     pwr_1129 = json.load(file)
-ext_power = (np.array(ext_power) * 0.6).tolist()
+with open(r'data\power\pwr_ext_5m_1127.json', 'r') as file:
+    pwr_1127 = json.load(file)
+ext_power_avg = (np.array(ext_power_avg) * 0.6).tolist()
 pwr_1129 = (np.array(pwr_1129) * 0.6).tolist()
+pwr_1127 = (np.array(pwr_1127) * 0.6).tolist()
 
 with open('data/housedata/outdoor_temp_5m.json', 'r') as file:
     outdoor_temperature = json.load(file)
+
 
 
 params = {
@@ -47,13 +53,16 @@ params = {
         'opt_params': {
             'energy_weight': 5,
             'comfort_weight': 1,
+            'slack_min_weight': 10,
             'rho_out': 0.018,
             'rho_in': 0.37,
             'COP': 3.5,
             'outdoor_temperature': outdoor_temperature,
             'reference_temperature': list(ref_temp_fixed-2), # reference_temperature,
+            'min_temperature': list(min_temp),
             'spot_price': spot_price,
-            'ext_power': ext_power,
+            'ext_power_real': pwr_1127,
+            'ext_power_avg': ext_power_avg
         },
         'bounds': {
             'P_max': p_max,
@@ -67,13 +76,16 @@ params = {
         'opt_params': {
             'energy_weight': 5,
             'comfort_weight': 1,
+            'slack_min_weight': 10,
             'rho_out': 0.018,
             'rho_in': 0.37,
             'COP': 3.5,
             'outdoor_temperature': outdoor_temperature,
             'reference_temperature': list(ref_temp_fixed+2), #reference_temperature,
+            'min_temperature': list(min_temp),
             'spot_price': spot_price,
-            'ext_power': ext_power
+            'ext_power_real': pwr_1129,
+            'ext_power_avg': ext_power_avg
         },
         'bounds': {
             'P_max': p_max,
@@ -88,7 +100,7 @@ params = {
             'peak_weight': 20
         },
         'bounds': {
-            'max_total_power': n_houses * 3
+            'max_total_power': n_houses * 10
         },
         'initial_state': {}
     }
@@ -107,21 +119,21 @@ params = {
 #     wrapper.persist_results('data/runs/')
 #%%
 
-# if __name__ == '__main__':
-#     cmpc_lin = MPCCentralizedHomePeakQuadratic(N, T, 'cent_quad', params)
-#     wrapper = MPCWrapper(N, T, [cmpc_lin])
-#     wrapper.run_full()
-#     wrapper.persist_results('data/runs/')
-    
-#%%
 if __name__ == '__main__':
-    mpcs = dict(
-        axel = MPCSingleHome(N, T, 'axel', params['axel']),
-        seb =  MPCSingleHome(N, T, 'seb', params['seb'])
-        )
-    wrapper = MPCWrapper(N, T, [ctrl for ctrl in mpcs.values()])
+    cmpc_quad = MPCCentralizedHomePeakQuadratic(N, T, 'cent_quad', params)
+    wrapper = MPCWrapper(N, T, [cmpc_quad])
     wrapper.run_full()
     wrapper.persist_results('data/runs/')
+    
+#%%
+# if __name__ == '__main__':
+#     mpcs = dict(
+#         axel = MPCSingleHome(N, T, 'axel', params['axel']),
+#         seb =  MPCSingleHome(N, T, 'seb', params['seb'])
+#         )
+#     wrapper = MPCWrapper(N, T, [ctrl for ctrl in mpcs.values()])
+#     wrapper.run_full()
+#     wrapper.persist_results('data/runs/')
 
 #%%
 
