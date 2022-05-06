@@ -6,6 +6,7 @@ import os
 import time
 from multiprocessing import Manager, Process
 
+
 class MPCWrapper():
     def __init__(
         self,
@@ -72,16 +73,19 @@ class DMPCWrapper(MPCWrapper):
         N: int,
         T: int, 
         controllers: list,
-        coordinator
+        coordinator,
+        dual_variable_length: int
         ):
         super().__init__(N, T, controllers) 
         self.coordinator = coordinator
         self.coordinator_results = self.manager.dict()
         self.coordination_dict = self.get_coordination_dict()
         
+        self.dual_variable_length = dual_variable_length
+        
     def get_coordination_dict(self):
         public_coordination = self.manager.dict(
-            dual_variables=np.zeros(self.N-1),
+            dual_variables=np.zeros(self.dual_variable_length),
             t=None
         )
         private_coordination = self.manager.dict() # Nested managed dict
@@ -149,7 +153,8 @@ class DMPCCoordinator():
         N: int,
         T: int,
         controllers: list,
-        dual_update_constant: float
+        dual_update_constant: float,
+        dual_variable_length: int
         ):
         """Create a DMPC coordinator object
 
@@ -164,6 +169,7 @@ class DMPCCoordinator():
         self.T = T
         self.controllers = controllers
         self.dual_update_constant = dual_update_constant
+        self.dual_variable_length = dual_variable_length
         
         self.dual_variables = self.get_dual_variables()
         self.dual_variables_traj = self.get_dual_variables_trajectory()
@@ -174,7 +180,7 @@ class DMPCCoordinator():
         Returns:
             ndarray: dual variables
         """
-        return np.zeros(self.N-1)
+        return np.zeros(self.dual_variable_length)
     
     def get_dual_variables_trajectory(self):
         """Builds the dual varaible trajectory
@@ -182,14 +188,14 @@ class DMPCCoordinator():
         Returns:
             ndarray: dual variable trajectory
         """
-        dual_variables_traj = np.empty((self.T,self.N-1 + self.T))
+        dual_variables_traj = np.empty((self.T,self.dual_variable_length + self.T))
         dual_variables_traj[:] = np.nan
         return dual_variables_traj
     
     def iterate_dual_variables(self):
         """Prepare dual variables for next time step
         """
-        self.dual_variables[:self.N-2] = self.dual_variables[1:]
+        self.dual_variables[:self.dual_variable_length-1] = self.dual_variables[1:]
     
     def update_dual_variables_trajectory(self, t):
         """Update dual variables trajectory at given time with current dual 
@@ -198,7 +204,7 @@ class DMPCCoordinator():
         Args:
             t (int): time step
         """
-        self.dual_variables_traj[t, t:t+self.N-1] = self.dual_variables
+        self.dual_variables_traj[t, t:t+self.dual_variable_length] = self.dual_variables
 
     def run_full(
         self,
@@ -253,7 +259,7 @@ class DMPCCoordinator():
                     dual_updates += private_coordination[controller]['dual_update_contribution']
                     
                 dual_updates += self.dual_update_constant
-                dual_update_step_size = 100 / np.sqrt(1+it) 
+                dual_update_step_size = 30 / np.sqrt(1+it) 
                 dual_updates *= dual_update_step_size
                 self.dual_variables += dual_updates
                 self.dual_variables[self.dual_variables < 0] = 0
@@ -268,7 +274,6 @@ class DMPCCoordinator():
                 f'f_diff = {f_diff.flatten()} '
                 f'dual diff = {round(dv_diff,4)} '
                 f'dv0 = {round(self.dual_variables[0],4)} '
-                f'dv1 = {round(self.dual_variables[1],4)}'
                 )
                 
                 if f_diff < f_tol and dv_diff < dv_tol:
@@ -289,8 +294,7 @@ class DMPCCoordinator():
         return_dict['dv_traj'] = self.dual_variables_traj.tolist()
             
 
-
-class MPCsWrapper():
+class MPCWrapperSerial():
     def __init__(
         self, 
         N: int, 
@@ -372,7 +376,7 @@ class MPCsWrapper():
             self.update_mpc_initial_states()
             
             
-class DistributedMPC(MPCsWrapper):
+class DMPCWrapperSerial(MPCWrapperSerial):
 
     def __init__(
         self, 

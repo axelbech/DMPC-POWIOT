@@ -3,16 +3,32 @@ import json
 from multiprocessing import Process, Manager
 from concurrent.futures import ProcessPoolExecutor
 import time
+import copy
 
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
-from mpc import MPCCentralizedHomePeak, MPCCentralizedHomePeakQuadratic, MPCPeakStateDistributedQuadratic, MPCSingleHome, MPCSingleHomeDistributed, MPCPeakStateDistributed
-from wrappers import MPCWrapper, MPCsWrapper, DistributedMPC, DMPCWrapper, DMPCCoordinator
+from mpc import (
+    MPCCentralizedHomePeak, 
+    MPCCentralizedHomePeakQuadratic, 
+    MPCPeakStateDistributed,
+    MPCPeakStateDistributedQuadratic, 
+    MPCSingleHome, 
+    MPCSingleHomeDistributed, 
+    MPCSingleHomePeak,
+    MPCSingleHomePeakDistributed,
+)
+from wrappers import (
+    MPCWrapper, 
+    DMPCWrapper,
+    MPCWrapperSerial, 
+    DMPCWrapperSerial,
+    DMPCCoordinator,
+)
 
-N = 25
-T = 25
+N = 288
+T = 30
 
 n_houses = 2
 p_max = 1.5
@@ -48,6 +64,7 @@ ext_power_none = np.zeros((N+T,)).tolist()
 with open('data/housedata/outdoor_temp_5m.json', 'r') as file:
     outdoor_temperature = json.load(file)
 
+peak_weight = 40
 
 
 params = {
@@ -99,7 +116,7 @@ params = {
     },
     'peak':{
         'opt_params': {
-            'peak_weight': 40,
+            'peak_weight': peak_weight,
             'ext_power_real': ext_power_peak, # QUICK FIX
             'ext_power_avg':  ext_power_peak
         },
@@ -109,6 +126,20 @@ params = {
         'initial_state': {}
     }
 }
+
+params_localized = copy.copy(params)
+del params_localized['peak']
+for house in params_localized:
+    params_localized[house]['opt_params']['peak_weight'] = peak_weight
+    
+if __name__ == '__main__':
+    mpcs = dict(
+    House1 = MPCSingleHomePeak(N, T, 'House1', params_localized['House1']),
+    House2 =  MPCSingleHomePeak(N, T, 'House2', params_localized['House2'])
+    )
+    wrapper = MPCWrapper(N, T, [ctrl for ctrl in mpcs.values()])
+    wrapper.run_full()
+    wrapper.persist_results('data/runs/')
 
 #%%
 # if __name__ == '__main__':
@@ -126,10 +157,10 @@ params = {
 #     wr.run_full()
 #%%
 
-if __name__ == '__main__':
-    cmpc_quad = MPCCentralizedHomePeakQuadratic(N, T, 'cent_quad', params)
-    wrapper = MPCWrapper(N, T, [cmpc_quad])
-    wrapper.run_full()
+# if __name__ == '__main__':
+#     cmpc_quad = MPCCentralizedHomePeakQuadratic(N, T, 'cent_quad', params)
+#     wrapper = MPCWrapper(N, T, [cmpc_quad])
+#     wrapper.run_full()
 #     wrapper.persist_results('data/runs/')
     
 #%%

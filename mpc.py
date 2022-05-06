@@ -9,7 +9,6 @@ from casadi.tools import *
 import numpy as np
 
 
-
 class MPC():
     """Model predictive control template for model predictive control using 
     CasADi symbolics and IPOPT for optimization
@@ -466,7 +465,315 @@ class MPCSingleHome(MPC):
         self.p_num['ext_power', 0] = (
             opt_params['ext_power_real'][t]
         )
-           
+        return
+
+
+class MPCSingleHomePeak(MPC):
+        
+    def get_parameters_structure(self):
+        return struct_symMX([
+                entry('energy_weight'),
+                entry('comfort_weight'),
+                entry('slack_min_weight'),
+                entry('peak_weight'),
+                entry('rho_out'),
+                entry('rho_in'),
+                entry('COP'),
+                entry('outdoor_temperature', repeat=self.N),
+                entry('reference_temperature', repeat=self.N),
+                entry('min_temperature', repeat=self.N),
+                entry('spot_price', repeat=self.N-1),
+                entry('ext_power', repeat=self.N-1)
+            ])
+        
+    def get_dynamics_functions(self):
+        wall = MX.sym('wall_temp')
+        room = MX.sym('room_temp')
+        OutTemp = MX.sym('OutTemp')
+
+        rho_out = MX.sym('rho_out')
+        rho_in = MX.sym('rho_in')
+        wall_plus = wall + rho_out * (OutTemp - wall) + rho_in * (room - wall)
+        wall_func = Function(
+            'wall_plus', 
+            [rho_out, rho_in, wall, room, OutTemp],
+            [wall_plus]
+            )
+
+        COP = MX.sym('COP')
+        Pow = MX.sym('Pow')
+        room_plus = room + rho_in * (wall - room) + COP * Pow
+        room_func = Function(
+            'room_plus',
+            [rho_in, room, wall, COP, Pow],
+            [room_plus]
+            )
+
+        return wall_func, room_func
+
+    def get_decision_variables(self):
+        return struct_symMX([
+                entry('room_temp', repeat=self.N),
+                entry('wall_temp', repeat=self.N),
+                entry('slack_temp', repeat=self.N),
+                entry('P_hp', repeat=self.N-1),
+                entry('peak_state', repeat=self.N-1)
+            ])
+    
+    def get_initial_state(self):
+        w0 = copy(self.w)(0)
+        w0['room_temp',:] = self.params['initial_state']['room_temp']
+        w0['wall_temp',:] = self.params['initial_state']['wall_temp']
+        return w0
+    
+    def get_state_bounds(self):
+        lbw = copy(self.w)(-inf)
+        ubw = copy(self.w)(inf)
+        lbw['P_hp', :] = 0
+        ubw['P_hp', :] = self.params['bounds']['P_max']
+        lbw['slack_temp', :] = 0
+        lbw['peak_state', :] = 0
+        return lbw, ubw
+    
+    def get_numerical_parameters(self):
+        p_num = self.p(0)
+        opt_params = self.params['opt_params']
+        p_num['energy_weight'] = opt_params['energy_weight']
+        p_num['comfort_weight'] = opt_params['comfort_weight']
+        p_num['slack_min_weight'] = opt_params['slack_min_weight']
+        p_num['peak_weight'] = opt_params['peak_weight']
+        p_num['rho_out'] = opt_params['rho_out']
+        p_num['rho_in'] = opt_params['rho_in']
+        p_num['COP'] = opt_params['COP']
+        return p_num
+    
+    def get_trajectory_structure(self):
+        traj_full = {}
+        traj_full['room_temp'] = []
+        traj_full['wall_temp'] = []
+        traj_full['P_hp'] = []
+        traj_full['peak_state'] = []
+        return traj_full
+    
+    def get_cost_function(self):
+        J = 0
+        
+        for k in range(self.N):
+            J += self.p['comfort_weight'] * \
+(self.w['room_temp', k] - self.p['reference_temperature', k])**2
+            J += self.p['slack_min_weight']*self.w['slack_temp',k]**2
+
+        for k in range(self.N-1):
+            J += self.p['energy_weight'] * \
+                self.p['spot_price', k] * self.w['P_hp', k]
+                
+            J += self.p['peak_weight'] * self.w['peak_state', k]
+            
+        # J += self.p['peak_weight'] * self.N-1 * self.w['peak_state', -1] # LAST STATE!
+
+        return J
+    
+    def get_constraint_functions(self):
+
+        g = []
+        lbg = []
+        ubg = []
+        self.wall_func, self.room_func = self.get_dynamics_functions()
+        
+        for k in range(self.N - 1):
+            rho_out = self.p['rho_out']
+            rho_in = self.p['rho_in']
+            wall = self.w['wall_temp', k]
+            room = self.w['room_temp', k]
+            Pow = self.w['P_hp', k]
+            out_temp = self.p['outdoor_temperature', k]
+            COP = self.p['COP']
+            
+            wall_plus = self.wall_func(
+                rho_out, 
+                rho_in, 
+                wall, 
+                room, 
+                out_temp
+                )
+            room_plus = self.room_func(
+                rho_in,
+                room,
+                wall,
+                COP,
+                Pow
+                )
+            
+            g.append(wall_plus - self.w['wall_temp', k+1])
+            lbg.append(0)
+            ubg.append(0)
+            g.append(room_plus - self.w['room_temp', k+1])
+            lbg.append(0)
+            ubg.append(0)
+            
+            g.append(self.p['min_temperature', k] 
+                    - self.w['room_temp', k] 
+                    - self.w['slack_temp', k])
+            lbg.append(-inf)
+            ubg.append(0)
+            
+        for k in range(self.N - 2): # This goes away when dualized
+            g.append(self.w['peak_state', k+1] - self.w['peak_state', k])
+            lbg.append(0)
+            ubg.append(inf)
+        for k in range(self.N - 1):
+            power_sum = 0
+            power_sum += self.w['P_hp', k]
+            power_sum += self.p['ext_power', k]
+            g.append(self.w['peak_state', k] - power_sum) # peak state must be greater than sum of power at k
+            lbg.append(0)
+            ubg.append(inf)
+                
+        return g, lbg, ubg
+    
+    def update_trajectory(self):
+        self.traj_full['room_temp'].append(self.w_opt['room_temp',0].__float__())
+        self.traj_full['wall_temp'].append(self.w_opt['wall_temp',0].__float__())
+        self.traj_full['P_hp'].append(self.w_opt['P_hp',0].__float__())
+        self.traj_full['peak_state'].append(self.w_opt['peak_state',0].__float__())
+
+    def update_initial_state(self):
+        self.w0['room_temp',:self.N-1]=self.w_opt['room_temp',1:]
+        self.w0['room_temp',-1]=self.w_opt['room_temp', -1]
+        
+        self.w0['wall_temp',:self.N-1]=self.w_opt['wall_temp',1:]
+        self.w0['room_temp',-1]=self.w_opt['room_temp', -1]
+        
+        self.w0['P_hp',:self.N-2]=self.w_opt['P_hp',1:]
+        self.w0['P_hp',-1]=self.w_opt['P_hp', -1]
+            
+        self.w0['peak_state', :self.N-2] = self.w_opt['peak_state', 1:]
+        self.w0['peak_state', -1] = self.w_opt['peak_state', -1]
+        
+    def update_constraints(self):
+        self.lbw['wall_temp', 0] = self.w0['wall_temp', 0]
+        self.ubw['wall_temp', 0] = self.w0['wall_temp', 0]
+        
+        self.lbw['room_temp', 0] = self.w0['room_temp', 0]
+        self.ubw['room_temp', 0] = self.w0['room_temp', 0]
+            
+        self.lbw['peak_state', 0] = round(float(self.w_opt['peak_state',0]), 6)
+                   
+    def update_parameters(self, t):
+        opt_params = self.params['opt_params']
+        self.p_num['outdoor_temperature'] = (
+            opt_params['outdoor_temperature'][t:t+self.N]
+        )
+        self.p_num['reference_temperature'] = (
+            opt_params['reference_temperature'][t:t+self.N]
+        )
+        self.p_num['min_temperature'] = (
+        opt_params['min_temperature'][t:t+self.N]
+        )
+        self.p_num['spot_price'] = (
+            opt_params['spot_price'][t:t+self.N-1]
+        )
+        self.p_num['ext_power'] = (
+            opt_params['ext_power_avg'][t:t+self.N-1]
+        )
+        self.p_num['ext_power', 0] = (
+            opt_params['ext_power_real'][t]
+        )
+        return
+
+
+class MPCSingleHomePeakDistributed(MPCDistributed, MPCSingleHomePeak):
+    def get_parameters_structure(self):
+        return struct_symMX([
+                entry('energy_weight'),
+                entry('comfort_weight'),
+                entry('slack_min_weight'),
+                entry('peak_weight'),
+                entry('rho_out'),
+                entry('rho_in'),
+                entry('COP'),
+                entry('outdoor_temperature', repeat=self.N),
+                entry('reference_temperature', repeat=self.N),
+                entry('min_temperature', repeat=self.N),
+                entry('spot_price', repeat=self.N-1),
+                entry('ext_power', repeat=self.N-1),
+                entry('dual_variables', repeat=self.N-1)
+            ])
+        
+    def get_cost_function(self):
+        J = super().get_cost_function()
+        
+        for k in range(self.N-2):
+            J += self.p['dual_variables',k] * (
+                self.w['peak_state',k] - self.w['peak_state', k+1]
+            )
+            
+        return J
+    
+    def get_constraint_functions(self):
+        g = []
+        lbg = []
+        ubg = []
+        self.wall_func, self.room_func = self.get_dynamics_functions()
+        
+        for k in range(self.N - 1):
+            rho_out = self.p['rho_out']
+            rho_in = self.p['rho_in']
+            wall = self.w['wall_temp', k]
+            room = self.w['room_temp', k]
+            Pow = self.w['P_hp', k]
+            out_temp = self.p['outdoor_temperature', k]
+            COP = self.p['COP']
+            
+            wall_plus = self.wall_func(
+                rho_out, 
+                rho_in, 
+                wall, 
+                room, 
+                out_temp
+                )
+            room_plus = self.room_func(
+                rho_in,
+                room,
+                wall,
+                COP,
+                Pow
+                )
+            
+            g.append(wall_plus - self.w['wall_temp', k+1])
+            lbg.append(0)
+            ubg.append(0)
+            g.append(room_plus - self.w['room_temp', k+1])
+            lbg.append(0)
+            ubg.append(0)
+            
+            g.append(self.p['min_temperature', k] 
+                    - self.w['room_temp', k] 
+                    - self.w['slack_temp', k])
+            lbg.append(-inf)
+            ubg.append(0)
+            
+        for k in range(self.N - 2): # This goes away when dualized
+            g.append(self.w['peak_state', k+1] - self.w['peak_state', k])
+            lbg.append(0)
+            ubg.append(inf)
+        for k in range(self.N - 1):
+            power_sum = 0
+            power_sum += self.w['P_hp', k]
+            power_sum += self.p['ext_power', k]
+            g.append(self.w['peak_state', k] - power_sum) # peak state must be greater than sum of power at k
+            lbg.append(0)
+            ubg.append(inf)
+                
+        return g, lbg, ubg
+
+    def get_dual_update_contribution(self):
+        peak_state_next=np.array(vertcat(*self.w_opt['peak_state',1:])).flatten()
+        peak_state_current = np.array(vertcat(*self.w_opt['peak_state', :-1])).flatten()
+        dual_update_contribution = peak_state_current - peak_state_next # Flipped for h(x)<=0 constraint standard
+        return dual_update_contribution
+
+
 class MPCSingleHomeDistributed(MPCDistributed, MPCSingleHome):
         
     def get_parameters_structure(self):
@@ -591,6 +898,8 @@ class MPCPeakStateDistributed(MPCDistributed):
         self.p_num['ext_power', 0] = (
             opt_params['ext_power_real'][t]
         )
+        return
+
 
 class MPCPeakStateDistributedQuadratic(MPCPeakStateDistributed):
     def get_cost_function(self):
@@ -865,6 +1174,8 @@ class MPCCentralizedHomePeak(MPC):
             self.p_num[home, 'ext_power', 0] = (
                 opt_params['ext_power_real'][t]
             )
+        return
+        
         
 class MPCCentralizedHomePeakQuadratic(MPCCentralizedHomePeak):
     def get_cost_function(self):
@@ -882,6 +1193,9 @@ class MPCCentralizedHomePeakQuadratic(MPCCentralizedHomePeak):
         for k in range(self.N-1):
             J += self.p['peak_state', 'peak_weight'] * self.w['peak_state', k]**2
         return J
+
+
+
 
 if __name__ == '__main__':
     from time import time, sleep
