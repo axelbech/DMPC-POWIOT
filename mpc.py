@@ -247,14 +247,13 @@ class MPCDistributed(MPC):
                 self.update_parameters_generic(
                     dual_variables=public_coordination['dual_variables']
                     )
-                dv_fst = public_coordination['dual_variables'][0]
-                print(f'{self.name}: time step {t}, pid = {os.getpid()}, w0 = {self.w0.master[0]}')
                 w_opt, f_opt = self.solve_optimization()
                 self.set_optimal_state(self.w(w_opt))
-                self.set_initial_state(self.w(w_opt))
+                # self.set_initial_state(self.w(w_opt))
                 private_coordination['dual_update_contribution'] = \
                     self.get_dual_update_contribution()
                 private_coordination['f_opt'] = f_opt
+                print(f'{self.name}: time step {t}, pid = {os.getpid()}, w_opt = {self.w_opt.master[0]}')
             
             self.update_trajectory()
             
@@ -506,6 +505,7 @@ class MPCSingleHomeDistributed(MPCDistributed, MPCSingleHome):
         heat_pump_power=np.array(vertcat(*self.w_opt['input',:, 'P_hp'])).flatten()
         ext_power = np.array(vertcat(*self.p_num['ext_power', :])).flatten()
         total_power = heat_pump_power + ext_power
+        # print(self.name, self.p_num['dual_variables',0], total_power[:5])
         return total_power
 
 
@@ -517,7 +517,8 @@ class MPCPeakStateDistributed(MPCDistributed):
     def get_parameters_structure(self):
         return struct_symMX([
             entry('peak_weight'), 
-            entry('dual_variables', repeat=self.N-1)
+            entry('dual_variables', repeat=self.N-1),
+            entry('ext_power', repeat=self.N-1) # QUICK FIX!
             ])
 
     def get_cost_function(self):
@@ -547,14 +548,14 @@ class MPCPeakStateDistributed(MPCDistributed):
     def get_state_bounds(self):
         lbw = copy(self.w)(0)
         ubw = copy(self.w)(self.params['bounds']['max_total_power'])
+        
+        lbw['peak_state', 0]
 
         return lbw, ubw
     
     def get_numerical_parameters(self):
         p_num = self.p(0)
-        
         p_num['peak_weight'] = self.params['opt_params']['peak_weight']
-        
         return p_num
     
     def get_trajectory_structure(self):
@@ -563,6 +564,7 @@ class MPCPeakStateDistributed(MPCDistributed):
         return traj_full
     
     def get_dual_update_contribution(self):
+        # print(self.name, self.p_num['dual_variables', 0], -np.array(vertcat(*self.w_opt['peak_state',:])).flatten()[:5])
         return -np.array(vertcat(*self.w_opt['peak_state',:])).flatten()
     
     def update_trajectory(self):
@@ -576,7 +578,19 @@ class MPCPeakStateDistributed(MPCDistributed):
         
     def update_constraints(self):
         # Need numerical tweaking to ensure feasability
+        self.lbw['peak_state'] = self.p_num['ext_power']
         self.lbw['peak_state', 0] = round(float(self.w_opt['peak_state',0]), 6)
+        if float(self.p_num['ext_power',0]) >= round(float(self.w_opt['peak_state',0]), 6):
+            self.lbw['peak_state', 0] = self.p_num['ext_power', 0]
+        
+    def update_parameters(self, t): # ANOTHER QUICK FIX
+        opt_params = self.params['opt_params']
+        self.p_num['ext_power'] = (
+            opt_params['ext_power_avg'][t:t+self.N-1]
+        )
+        self.p_num['ext_power', 0] = (
+            opt_params['ext_power_real'][t]
+        )
 
 class MPCPeakStateDistributedQuadratic(MPCPeakStateDistributed):
     def get_cost_function(self):

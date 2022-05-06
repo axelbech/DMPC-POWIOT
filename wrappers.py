@@ -217,11 +217,11 @@ class DMPCCoordinator():
         """
         
         
-        maxIt = 20
+        maxIt = 120
         
         self.f_sum_last = 1e6
-        f_tol = 1e-1 * self.N
-        dv_tol = 0.1
+        f_tol = 1e-2 * self.N
+        dv_tol = 1e-2
         
         t = 0
         public_coordination['t'] = t
@@ -253,7 +253,7 @@ class DMPCCoordinator():
                     dual_updates += private_coordination[controller]['dual_update_contribution']
                     
                 dual_updates += self.dual_update_constant
-                dual_update_step_size = 20 / np.sqrt(1+it)
+                dual_update_step_size = 100 / np.sqrt(1+it) 
                 dual_updates *= dual_update_step_size
                 self.dual_variables += dual_updates
                 self.dual_variables[self.dual_variables < 0] = 0
@@ -266,7 +266,9 @@ class DMPCCoordinator():
                 print(
                 f'dual decomp iteration {it} , time step {t}, '
                 f'f_diff = {f_diff.flatten()} '
-                f'dual diff = {round(dv_diff,4)}'
+                f'dual diff = {round(dv_diff,4)} '
+                f'dv0 = {round(self.dual_variables[0],4)} '
+                f'dv1 = {round(self.dual_variables[1],4)}'
                 )
                 
                 if f_diff < f_tol and dv_diff < dv_tol:
@@ -436,14 +438,14 @@ class DistributedMPC(MPCsWrapper):
         
     def dual_decomposition(self):
         it = 0
-        maxIt = 20
+        maxIt = 60
         
-        f_tol = 1e-1 * self.N
-        dv_tol = 0.1
+        f_tol = 1e-2 * self.N
+        dv_tol = 1e-2
         
         while it < maxIt:
-            w0 = list(self.mpcs.values())[0].w0.master[0]
-            print(f'w0 = {w0}')
+            # w0 = list(self.mpcs.values())[0].w0.master[0]
+            # print(f'w0 = {w0}')
             f_sum = 0
             dual_updates = np.zeros_like(self.dual_variables)
             dual_variables_last = np.copy(self.dual_variables)
@@ -456,10 +458,11 @@ class DistributedMPC(MPCsWrapper):
                 
                 mpc.set_optimal_state(mpc.w(w_opt))
                 mpc.set_initial_state(mpc.w(w_opt))
+                print(mpc.name, ' wopt = ', w_opt[0])
                 dual_updates += mpc.get_dual_update_contribution()
                 
             dual_updates += self.dual_update_constant
-            dual_update_step_size = 20 / np.sqrt(1+it)
+            dual_update_step_size = 100 / np.sqrt(1+it)
             dual_updates *= dual_update_step_size
             self.dual_variables += dual_updates
             self.dual_variables[self.dual_variables < 0] = 0
@@ -471,7 +474,9 @@ class DistributedMPC(MPCsWrapper):
             print(
                 f'dual decomp iteration {it} '
                 f'f_diff = {f_diff} '
-                f'dual diff = {round(dv_diff,2)}'
+                f'dual diff = {round(dv_diff,2)} '
+                f'dv = {self.dual_variables}'
+                # f'dv = {round(self.dual_variables[0],4)} '
                 )
             
             if f_diff < f_tol and dv_diff < dv_tol:
