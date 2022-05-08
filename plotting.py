@@ -10,13 +10,18 @@ import pytz
 
 
 
-# cpath = r'data\runs\MPCWrapper-N288T288-20220504-123908\\'
+# cpath = r'data\runs\MPCWrapper-N288T288-20220504-123908\\' # Old values
 # dpath = r'data\runs\DMPCWrapper-N288T288-20220504-125642\\'
 # dcpath = r'data\runs\MPCWrapper-N288T288-20220504-114723\\'
 
-cpath = r'data\runs\MPCWrapper-N25T25-20220505-092634\\'
-dpath = r'data\runs\DMPCWrapper-N25T25-20220505-092941\\'
-dcpath = r'data\runs\MPCWrapper-N25T25-20220505-092607\\'
+# cpath = r'data\runs\MPCWrapper-N288T288-20220506-233032\\' # Recent full run, no good hehe
+# dpath = r'data\runs\DMPCWrapper-N288T288-20220507-000814\\'
+# dcpath = r'data\runs\MPCWrapper-N288T288-20220506-233223\\'
+
+
+# cpath = r'data\runs\MPCWrapper-N100T10-20220507-103535\\'
+# dpath = r'data\runs\DMPCWrapperSerial-N100T10-20220507-103521\\'
+# dcpath = r'data\runs\MPCWrapper-N100T10-20220507-103528\\'
 
 ddpath = r'data\runs\DMPCWrapper-N25T25-20220505-092941\MPCPeakStateDistributedQuadratic-peak.json'
 ccpath = r'data\runs\MPCWrapper-N25T25-20220505-092634\MPCCentralizedHomePeakQuadratic-cent_quad.json'
@@ -97,7 +102,8 @@ def get_5m_time(length):
 def plot_2_houses(cmpc_path, dmpc_path, dcmpc_path):
     cmpc = read_from_folder_centralized(cmpc_path)
     dmpc = read_from_folder(dmpc_path)
-    del dmpc['DMPCCoordinator']
+    if dmpc.get('DMPCCoordinator', False):
+        del dmpc['DMPCCoordinator']
     dcmpc = read_from_folder(dcmpc_path)
     cmpc, dmpc, dcmpc = tuple(map(remove_peak, [cmpc, dmpc, dcmpc]))
     figr, axsr = plt.subplots(1, 2)
@@ -146,8 +152,8 @@ def plot_2_peak(cmpc_path, dmpc_path):
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
     plt.show()
     
-# plot_2_houses(cpath, dpath, dcpath)
-plot_2_peak(ccpath, ddpath)
+plot_2_houses(cpath, dpath, dcpath)
+# plot_2_peak(ccpath, ddpath)
 
 
 

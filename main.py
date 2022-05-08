@@ -27,8 +27,8 @@ from wrappers import (
     DMPCCoordinator,
 )
 
-N = 288
-T = 30
+N = 100
+T = 1
 
 n_houses = 2
 p_max = 1.5
@@ -64,15 +64,15 @@ ext_power_none = np.zeros((N+T,)).tolist()
 with open('data/housedata/outdoor_temp_5m.json', 'r') as file:
     outdoor_temperature = json.load(file)
 
-peak_weight = 40
+peak_weight = 0.5
 
 
 params = {
     'House1': {
         'opt_params': {
-            'energy_weight': 5,
-            'comfort_weight': 2,
-            'slack_min_weight': 20,
+            'energy_weight': 0.01,
+            'comfort_weight': 0.05,
+            'slack_min_weight': 1,
             'rho_out': 0.018,
             'rho_in': 0.37,
             'COP': 3.5,
@@ -80,8 +80,8 @@ params = {
             'reference_temperature': list(ref_temp_fixed-2), # reference_temperature,
             'min_temperature': list(min_temp),
             'spot_price': spot_price,
-            'ext_power_real': ext_power_avg,# pwr_1127,
-            'ext_power_avg': ext_power_avg
+            'ext_power_real': ext_power_none,# ext_power_avg,# pwr_1127,
+            'ext_power_avg': ext_power_none, # ext_power_avg
         },
         'bounds': {
             'P_max': p_max,
@@ -93,9 +93,9 @@ params = {
     },
     'House2': {
         'opt_params': {
-            'energy_weight': 10,
-            'comfort_weight': 2,
-            'slack_min_weight': 20,
+            'energy_weight': 0.01,
+            'comfort_weight': 0.1,
+            'slack_min_weight': 1,
             'rho_out': 0.018,
             'rho_in': 0.37,
             'COP': 3.5,
@@ -103,8 +103,8 @@ params = {
             'reference_temperature': list(ref_temp_fixed+2), #reference_temperature,
             'min_temperature': list(min_temp),
             'spot_price': spot_price,
-            'ext_power_real': ext_power_avg, # pwr_1129,
-            'ext_power_avg':  ext_power_avg
+            'ext_power_real': ext_power_none,# ext_power_avg, # pwr_1129,
+            'ext_power_avg': ext_power_none# ext_power_avg
         },
         'bounds': {
             'P_max': p_max,
@@ -117,13 +117,15 @@ params = {
     'peak':{
         'opt_params': {
             'peak_weight': peak_weight,
-            'ext_power_real': ext_power_peak, # QUICK FIX
-            'ext_power_avg':  ext_power_peak
+            # 'ext_power_real': ext_power_peak, # QUICK FIX
+            # 'ext_power_avg':  ext_power_peak
         },
         'bounds': {
-            'max_total_power': n_houses * 10
+            # 'max_total_power': n_houses * 10
         },
-        'initial_state': {}
+        'initial_state': {
+            'peak_state': 0
+        }
     }
 }
 
@@ -131,16 +133,36 @@ params_localized = copy.copy(params)
 del params_localized['peak']
 for house in params_localized:
     params_localized[house]['opt_params']['peak_weight'] = peak_weight
+    params_localized[house]['initial_state']['peak_state'] = 0
+    
     
 if __name__ == '__main__':
     mpcs = dict(
-    House1 = MPCSingleHomePeak(N, T, 'House1', params_localized['House1']),
-    House2 =  MPCSingleHomePeak(N, T, 'House2', params_localized['House2'])
+    House1 = MPCSingleHomePeakDistributed(N, T, 'House1', params_localized['House1']),
+    House2 =  MPCSingleHomePeakDistributed(N, T, 'House2', params_localized['House2'])
     )
-    wrapper = MPCWrapper(N, T, [ctrl for ctrl in mpcs.values()])
-    wrapper.run_full()
-    wrapper.persist_results('data/runs/')
+    wrapper = DMPCWrapperSerial(N, T, mpcs, 0, dual_variables_length=N-1)
+    wrapper.run_full()  
+    # wrapper.persist_results('data/runs/')
+    # coordinator = DMPCCoordinator(N, T, [ctrl for ctrl in mpcs], dual_update_constant=0, dual_variables_length=N-1)
+    # wrapper = DMPCWrapper(N, T, [ctrl for ctrl in mpcs.values()],coordinator, dual_variables_length=N-1)
+    # wrapper.run_full()
+    # wrapper.persist_results('data/runs/')
+    
+# if __name__ == '__main__':
+#     mpcs = dict(
+#     House1 = MPCSingleHomePeak(N, T, 'House1', params_localized['House1']),
+#     House2 =  MPCSingleHomePeak(N, T, 'House2', params_localized['House2'])
+#     )
+#     wrapper = MPCWrapper(N, T, [ctrl for ctrl in mpcs.values()])
+#     wrapper.run_full()
+#     wrapper.persist_results('data/runs/')
 
+# if __name__ == '__main__':
+#     cmpc_quad = MPCCentralizedHomePeakQuadratic(N, T, 'cent_quad', params)
+#     wrapper = MPCWrapper(N, T, [cmpc_quad])
+#     wrapper.run_full()
+#     wrapper.persist_results('data/runs/')
 #%%
 # if __name__ == '__main__':
 #     mpcs = dict(
@@ -148,8 +170,8 @@ if __name__ == '__main__':
 #         House2 =  MPCSingleHomeDistributed(N, T, 'House2', params['House2']),
 #         peak = MPCPeakStateDistributedQuadratic(N, T, 'peak', params['peak'])
 #         )
-#     coordinator = DMPCCoordinator(N, T, [ctrl for ctrl in mpcs], 0)
-#     wrapper = DMPCWrapper(N, T, [ctrl for ctrl in mpcs.values()], coordinator)
+#     coordinator = DMPCCoordinator(N, T, [ctrl for ctrl in mpcs], 0, dual_variables_length=N-1)
+#     wrapper = DMPCWrapper(N, T, [ctrl for ctrl in mpcs.values()], coordinator, dual_variables_length=N-1)
 #     wrapper.run_full()
 #     wrapper.persist_results('data/runs/')
     
@@ -157,13 +179,8 @@ if __name__ == '__main__':
 #     wr.run_full()
 #%%
 
-# if __name__ == '__main__':
-#     cmpc_quad = MPCCentralizedHomePeakQuadratic(N, T, 'cent_quad', params)
-#     wrapper = MPCWrapper(N, T, [cmpc_quad])
-#     wrapper.run_full()
-#     wrapper.persist_results('data/runs/')
     
-#%%
+# #%%
 # if __name__ == '__main__':
 #     mpcs = dict(
 #         House1 = MPCSingleHome(N, T, 'House1', params['House1']),

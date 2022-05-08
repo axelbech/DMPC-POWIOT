@@ -74,18 +74,17 @@ class DMPCWrapper(MPCWrapper):
         T: int, 
         controllers: list,
         coordinator,
-        dual_variable_length: int
+        dual_variables_length: int
         ):
         super().__init__(N, T, controllers) 
+        self.dual_variables_length = dual_variables_length
         self.coordinator = coordinator
         self.coordinator_results = self.manager.dict()
         self.coordination_dict = self.get_coordination_dict()
         
-        self.dual_variable_length = dual_variable_length
-        
     def get_coordination_dict(self):
         public_coordination = self.manager.dict(
-            dual_variables=np.zeros(self.dual_variable_length),
+            dual_variables=np.zeros((self.dual_variables_length,)),
             t=None
         )
         private_coordination = self.manager.dict() # Nested managed dict
@@ -154,7 +153,7 @@ class DMPCCoordinator():
         T: int,
         controllers: list,
         dual_update_constant: float,
-        dual_variable_length: int
+        dual_variables_length: int
         ):
         """Create a DMPC coordinator object
 
@@ -169,7 +168,7 @@ class DMPCCoordinator():
         self.T = T
         self.controllers = controllers
         self.dual_update_constant = dual_update_constant
-        self.dual_variable_length = dual_variable_length
+        self.dual_variables_length = dual_variables_length
         
         self.dual_variables = self.get_dual_variables()
         self.dual_variables_traj = self.get_dual_variables_trajectory()
@@ -180,7 +179,32 @@ class DMPCCoordinator():
         Returns:
             ndarray: dual variables
         """
-        return np.zeros(self.dual_variable_length)
+        return np.array([2.08448891e-09, 9.44947131e+00, 1.72628920e+01, 2.34832316e+01,
+       2.83050698e+01, 3.18454219e+01, 3.42818095e+01, 3.57957122e+01,
+       3.65759076e+01, 3.68382991e+01, 3.69024738e+01, 3.67964561e+01,
+       3.65487460e+01, 3.61897755e+01, 3.57577137e+01, 3.53215938e+01,
+       3.49030343e+01, 3.44669145e+01, 3.40307947e+01, 3.35946749e+01,
+       3.31585551e+01, 3.27224353e+01, 3.22863155e+01, 3.18501958e+01,
+       3.14140760e+01, 3.09779563e+01, 3.05418365e+01, 3.01057168e+01,
+       2.96695971e+01, 2.92334774e+01, 2.87973577e+01, 2.83612380e+01,
+       2.79251183e+01, 2.74889986e+01, 2.70528790e+01, 2.66167593e+01,
+       2.61806397e+01, 2.57445201e+01, 2.53084004e+01, 2.48722808e+01,
+       2.44361612e+01, 2.40000417e+01, 2.35639221e+01, 2.31278025e+01,
+       2.26916829e+01, 2.22555634e+01, 2.18194439e+01, 2.13833243e+01,
+       2.09472048e+01, 2.05110853e+01, 2.00749658e+01, 1.96450882e+01,
+       1.92089687e+01, 1.87728492e+01, 1.83367297e+01, 1.79006103e+01,
+       1.74644908e+01, 1.70283714e+01, 1.65922520e+01, 1.61561326e+01,
+       1.57200132e+01, 1.53368354e+01, 1.50612486e+01, 1.49655919e+01,
+       1.45294725e+01, 1.40933532e+01, 1.36572338e+01, 1.32211145e+01,
+       1.27849952e+01, 1.23488758e+01, 1.19127565e+01, 1.14766373e+01,
+       1.10408961e+01, 1.06771385e+01, 1.04376542e+01, 1.03959048e+01,
+       9.95978555e+00, 9.52366631e+00, 9.08754708e+00, 8.65142787e+00,
+       8.21530867e+00, 7.77918947e+00, 7.34307029e+00, 6.90695112e+00,
+       6.47083196e+00, 6.03471281e+00, 5.59859369e+00, 5.23342890e+00,
+       4.79730977e+00, 4.36119065e+00, 3.92507154e+00, 3.48895245e+00,
+       3.05283336e+00, 2.61671428e+00, 2.18059521e+00, 1.74447615e+00,
+       1.30835710e+00, 8.72238057e-01, 4.36119024e-01])
+        return np.zeros(self.dual_variables_length)
     
     def get_dual_variables_trajectory(self):
         """Builds the dual varaible trajectory
@@ -188,14 +212,14 @@ class DMPCCoordinator():
         Returns:
             ndarray: dual variable trajectory
         """
-        dual_variables_traj = np.empty((self.T,self.dual_variable_length + self.T))
+        dual_variables_traj = np.empty((self.T,self.dual_variables_length + self.T))
         dual_variables_traj[:] = np.nan
         return dual_variables_traj
     
     def iterate_dual_variables(self):
         """Prepare dual variables for next time step
         """
-        self.dual_variables[:self.dual_variable_length-1] = self.dual_variables[1:]
+        self.dual_variables[:self.dual_variables_length-1] = self.dual_variables[1:]
     
     def update_dual_variables_trajectory(self, t):
         """Update dual variables trajectory at given time with current dual 
@@ -204,7 +228,7 @@ class DMPCCoordinator():
         Args:
             t (int): time step
         """
-        self.dual_variables_traj[t, t:t+self.dual_variable_length] = self.dual_variables
+        self.dual_variables_traj[t, t:t+self.dual_variables_length] = self.dual_variables
 
     def run_full(
         self,
@@ -223,18 +247,18 @@ class DMPCCoordinator():
         """
         
         
-        maxIt = 120
+        maxIt = 30
         
         self.f_sum_last = 1e6
-        f_tol = 1e-2 * self.N
-        dv_tol = 1e-2
+        f_tol = 1e-3 * self.N
+        dv_tol = 1e-3
         
         t = 0
         public_coordination['t'] = t
         # for t in range(self.T):
         while t < self.T:
             public_coordination['t'] = t
-
+            public_coordination['dual_variables'] = self.dual_variables # If special start values
             print(f'\n\nstarting dual decomp at time step {t}, pid = {os.getpid()}')
             it = 0
             while it < maxIt:
@@ -259,7 +283,7 @@ class DMPCCoordinator():
                     dual_updates += private_coordination[controller]['dual_update_contribution']
                     
                 dual_updates += self.dual_update_constant
-                dual_update_step_size = 30 / np.sqrt(1+it) 
+                dual_update_step_size = 0.15 # 2 / np.sqrt(1+it) 
                 dual_updates *= dual_update_step_size
                 self.dual_variables += dual_updates
                 self.dual_variables[self.dual_variables < 0] = 0
@@ -383,10 +407,12 @@ class DMPCWrapperSerial(MPCWrapperSerial):
         N: int, 
         T: int, 
         mpcs: dict,
-        dual_update_constant: float
+        dual_update_constant: float,
+        dual_variables_length: int
         ):
         
         super().__init__(N, T, mpcs)
+        self.dual_variables_length = dual_variables_length
         self.dual_variables = self.get_dual_variables()
         self.dual_variables_traj = self.get_dual_variables_trajectory()
         self.dual_update_constant = dual_update_constant
@@ -399,7 +425,32 @@ class DMPCWrapperSerial(MPCWrapperSerial):
         Returns:
             ndarray: dual variables
         """
-        return np.zeros(self.N-1)
+        return np.array([2.08448891e-09, 9.44947131e+00, 1.72628920e+01, 2.34832316e+01,
+       2.83050698e+01, 3.18454219e+01, 3.42818095e+01, 3.57957122e+01,
+       3.65759076e+01, 3.68382991e+01, 3.69024738e+01, 3.67964561e+01,
+       3.65487460e+01, 3.61897755e+01, 3.57577137e+01, 3.53215938e+01,
+       3.49030343e+01, 3.44669145e+01, 3.40307947e+01, 3.35946749e+01,
+       3.31585551e+01, 3.27224353e+01, 3.22863155e+01, 3.18501958e+01,
+       3.14140760e+01, 3.09779563e+01, 3.05418365e+01, 3.01057168e+01,
+       2.96695971e+01, 2.92334774e+01, 2.87973577e+01, 2.83612380e+01,
+       2.79251183e+01, 2.74889986e+01, 2.70528790e+01, 2.66167593e+01,
+       2.61806397e+01, 2.57445201e+01, 2.53084004e+01, 2.48722808e+01,
+       2.44361612e+01, 2.40000417e+01, 2.35639221e+01, 2.31278025e+01,
+       2.26916829e+01, 2.22555634e+01, 2.18194439e+01, 2.13833243e+01,
+       2.09472048e+01, 2.05110853e+01, 2.00749658e+01, 1.96450882e+01,
+       1.92089687e+01, 1.87728492e+01, 1.83367297e+01, 1.79006103e+01,
+       1.74644908e+01, 1.70283714e+01, 1.65922520e+01, 1.61561326e+01,
+       1.57200132e+01, 1.53368354e+01, 1.50612486e+01, 1.49655919e+01,
+       1.45294725e+01, 1.40933532e+01, 1.36572338e+01, 1.32211145e+01,
+       1.27849952e+01, 1.23488758e+01, 1.19127565e+01, 1.14766373e+01,
+       1.10408961e+01, 1.06771385e+01, 1.04376542e+01, 1.03959048e+01,
+       9.95978555e+00, 9.52366631e+00, 9.08754708e+00, 8.65142787e+00,
+       8.21530867e+00, 7.77918947e+00, 7.34307029e+00, 6.90695112e+00,
+       6.47083196e+00, 6.03471281e+00, 5.59859369e+00, 5.23342890e+00,
+       4.79730977e+00, 4.36119065e+00, 3.92507154e+00, 3.48895245e+00,
+       3.05283336e+00, 2.61671428e+00, 2.18059521e+00, 1.74447615e+00,
+       1.30835710e+00, 8.72238057e-01, 4.36119024e-01])
+        # return np.zeros(self.dual_variables_length)
     
     def get_dual_variables_trajectory(self):
         """Builds the dual varaible trajectory
@@ -407,14 +458,14 @@ class DMPCWrapperSerial(MPCWrapperSerial):
         Returns:
             ndarray: dual variable trajectory
         """
-        dual_variables_traj = np.empty((self.T,self.N-1 + self.T))
+        dual_variables_traj = np.empty((self.T,self.dual_variables_length + self.T))
         dual_variables_traj[:] = np.nan
         return dual_variables_traj
     
     def iterate_dual_variables(self):
         """Prepare dual variables for next time step
         """
-        self.dual_variables[:self.N-2] = self.dual_variables[1:]
+        self.dual_variables[:self.dual_variables_length-1] = self.dual_variables[1:]
     
     def update_dual_variables_trajectory(self, t):
         """Update dual variables trajectory at given time with current dual 
@@ -423,7 +474,7 @@ class DMPCWrapperSerial(MPCWrapperSerial):
         Args:
             t (int): time step
         """
-        self.dual_variables_traj[t, t:t+self.N-1] = self.dual_variables
+        self.dual_variables_traj[t, t:t+self.dual_variables_length] = self.dual_variables
         
     def update_mpc_dual_variables(self):
         """Update dual variables in mpcs with current dual variable
@@ -442,10 +493,10 @@ class DMPCWrapperSerial(MPCWrapperSerial):
         
     def dual_decomposition(self):
         it = 0
-        maxIt = 60
+        maxIt = 30
         
-        f_tol = 1e-2 * self.N
-        dv_tol = 1e-2
+        f_tol = 1e-3 * self.N
+        dv_tol = 1e-3
         
         while it < maxIt:
             # w0 = list(self.mpcs.values())[0].w0.master[0]
@@ -462,14 +513,15 @@ class DMPCWrapperSerial(MPCWrapperSerial):
                 
                 mpc.set_optimal_state(mpc.w(w_opt))
                 mpc.set_initial_state(mpc.w(w_opt))
-                print(mpc.name, ' wopt = ', w_opt[0])
+                print(mpc.name, ' peak0 = ', mpc.w_opt['peak_state',1])
                 dual_updates += mpc.get_dual_update_contribution()
                 
             dual_updates += self.dual_update_constant
-            dual_update_step_size = 100 / np.sqrt(1+it)
-            dual_updates *= dual_update_step_size
+            dual_update_step_size = 0.15 # 5 / np.sqrt(1+it) # alpha value
+            dual_updates *= dual_update_step_size # alpha * residual
             self.dual_variables += dual_updates
-            self.dual_variables[self.dual_variables < 0] = 0
+            # self.dual_variables -= dual_updates #Testing negative update
+            self.dual_variables[self.dual_variables < 0] = 0 # Project DV
             
             f_diff = np.abs(f_sum - self.f_sum_last)
             self.f_sum_last = f_sum
@@ -477,10 +529,10 @@ class DMPCWrapperSerial(MPCWrapperSerial):
             
             print(
                 f'dual decomp iteration {it} '
-                f'f_diff = {f_diff} '
-                f'dual diff = {round(dv_diff,2)} '
-                f'dv = {self.dual_variables}'
-                # f'dv = {round(self.dual_variables[0],4)} '
+                f'f_diff = {f_diff.flatten().flatten()} '
+                f'dual diff = {round(dv_diff,4)} '
+                # f'dv = {self.dual_variables}'
+                f'dv = {round(self.dual_variables[0],2)} '
                 )
             
             if f_diff < f_tol and dv_diff < dv_tol:
