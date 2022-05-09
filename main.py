@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 
 from mpc import (
+    MPCCentralizedHome,
     MPCCentralizedHomePeak, 
     MPCCentralizedHomePeakQuadratic, 
     MPCPeakStateDistributed,
@@ -28,7 +29,7 @@ from wrappers import (
 )
 
 N = 100
-T = 1
+T = 50
 
 n_houses = 2
 p_max = 1.5
@@ -65,7 +66,7 @@ with open('data/housedata/outdoor_temp_5m.json', 'r') as file:
     outdoor_temperature = json.load(file)
 
 peak_weight = 0.5
-
+max_total_power = n_houses * 0.2
 
 params = {
     'House1': {
@@ -126,24 +127,52 @@ params = {
         'initial_state': {
             'peak_state': 0
         }
-    }
+    },
+    'max_total_power': max_total_power
 }
 
 params_localized = copy.copy(params)
 del params_localized['peak']
+del params_localized['max_total_power']
 for house in params_localized:
     params_localized[house]['opt_params']['peak_weight'] = peak_weight
     params_localized[house]['initial_state']['peak_state'] = 0
     
+
+
+# if __name__ == '__main__':
+#     mpcs = dict(
+#     House1 = MPCSingleHomeDistributed(N, T, 'House1', params['House1']),
+#     House2 =  MPCSingleHomeDistributed(N, T, 'House2', params['House2'])
+#     )
+#     wrapper = DMPCWrapperSerial(N, T, mpcs, -max_total_power, dual_variables_length=N-1)
+#     wrapper.run_full()  
+#     wrapper.persist_results('data/runs/')
     
+# if __name__ == '__main__':
+#     cmpc = MPCCentralizedHome(N, T, 'cent', params)
+#     wrapper = MPCWrapper(N, T, [cmpc])
+#     wrapper.run_full()
+#     wrapper.persist_results('data/runs/')
+
 if __name__ == '__main__':
     mpcs = dict(
-    House1 = MPCSingleHomePeakDistributed(N, T, 'House1', params_localized['House1']),
-    House2 =  MPCSingleHomePeakDistributed(N, T, 'House2', params_localized['House2'])
-    )
-    wrapper = DMPCWrapperSerial(N, T, mpcs, 0, dual_variables_length=N-1)
-    wrapper.run_full()  
-    # wrapper.persist_results('data/runs/')
+        House1 = MPCSingleHome(N, T, 'House1', params['House1']),
+        House2 =  MPCSingleHome(N, T, 'House2', params['House2'])
+        )
+    wrapper = MPCWrapper(N, T, [ctrl for ctrl in mpcs.values()])
+    wrapper.run_full()
+    wrapper.persist_results('data/runs/')
+    
+    
+# if __name__ == '__main__':
+#     mpcs = dict(
+#     House1 = MPCSingleHomePeakDistributed(N, T, 'House1', params_localized['House1']),
+#     House2 =  MPCSingleHomePeakDistributed(N, T, 'House2', params_localized['House2'])
+#     )
+#     wrapper = DMPCWrapperSerial(N, T, mpcs, 0, dual_variables_length=N-1)
+#     wrapper.run_full()  
+#     wrapper.persist_results('data/runs/')
     # coordinator = DMPCCoordinator(N, T, [ctrl for ctrl in mpcs], dual_update_constant=0, dual_variables_length=N-1)
     # wrapper = DMPCWrapper(N, T, [ctrl for ctrl in mpcs.values()],coordinator, dual_variables_length=N-1)
     # wrapper.run_full()
@@ -159,8 +188,8 @@ if __name__ == '__main__':
 #     wrapper.persist_results('data/runs/')
 
 # if __name__ == '__main__':
-#     cmpc_quad = MPCCentralizedHomePeakQuadratic(N, T, 'cent_quad', params)
-#     wrapper = MPCWrapper(N, T, [cmpc_quad])
+#     cmpc_lin = MPCCentralizedHomePeak(N, T, 'cent_lin', params)
+#     wrapper = MPCWrapper(N, T, [cmpc_lin])
 #     wrapper.run_full()
 #     wrapper.persist_results('data/runs/')
 #%%
