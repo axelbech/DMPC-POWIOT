@@ -464,7 +464,11 @@ class DMPCWrapperSerial(MPCWrapperSerial):
         with open(path + folder_name + '/' + file_name, 'w') as file:
             json.dump(dv_list, file, indent=4)
             
-        
+    def project_dual_variables(self):
+        """Project the computed dual variable onto its feasible plane. To be 
+        used in the dual decomposition algorithm
+        """
+        self.dual_variables[self.dual_variables < 0] = 0
         
     def dual_decomposition(self):
         it = 0
@@ -496,6 +500,7 @@ class DMPCWrapperSerial(MPCWrapperSerial):
             dual_updates *= dual_update_step_size # alpha * residual
             self.dual_variables += dual_updates
             # self.dual_variables -= dual_updates #Testing negative update
+            self.project_dual_variables(self)
             self.dual_variables[self.dual_variables < 0] = 0 # Project DV
             
             f_diff = np.abs(f_sum - self.f_sum_last)
@@ -536,6 +541,20 @@ class DMPCWrapperSerial(MPCWrapperSerial):
             self.update_mpc_initial_states()
             
             
-            
-            
-            
+class DMPCWrapperSerialProxGrad(DMPCWrapperSerial):
+    
+    def __init__(
+        self, 
+        N: int, 
+        T: int, 
+        mpcs: dict,
+        dual_update_constant: float, 
+        dual_variables_length: int, proximalGradientSolver):
+        super().__init__(N, T, mpcs, dual_update_constant, dual_variables_length)
+        
+        self.proximalGradientSolver = proximalGradientSolver
+    
+    def project_dual_variables(self):
+        self.proximalGradientSolver.update_parameters_generic(
+            mu_plus = self.dual_variables
+        )
