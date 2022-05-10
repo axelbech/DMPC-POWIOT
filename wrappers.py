@@ -558,3 +558,4 @@ class DMPCWrapperSerialProxGrad(DMPCWrapperSerial):
         self.proximalGradientSolver.update_parameters_generic(
             mu_plus = self.dual_variables
         )
+        self.dual_variables = self.proximalGradientSolver.solve_optimization()
