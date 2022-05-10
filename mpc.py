@@ -1519,3 +1519,176 @@ class MPCCentralizedHome(MPC):
         return solution['x'], solution['f']
 
 
+class ProximalGradientSolver():
+    """Proximal Gradient solver for projecting  varaible onto a feasible
+    plane
+    
+    """
+    def __init__(self, N: int, peak_weight: float):
+        """Create an MPC object
+
+        Args:
+            N (int): optimization window length
+            peak_weight (float): weight of lone peak state in org. opt. prob.
+        """
+        self.N = N
+        self.peak_weight = peak_weight
+        
+        self.w = self.get_decision_variables()
+        self.p = self.get_parameters_structure()
+        
+        self.w0 = self.get_initial_state()
+        self.lbw, self.ubw = self.get_state_bounds()
+        self.p_num = self.get_numerical_parameters()
+        self.w_opt = copy(self.w)(0)
+        
+        self.solver = self.get_solver()
+        
+        dumps(self) # Another quick fix for serializability
+        
+    def get_decision_variables(self):
+        """Builds the decision variable
+        
+        Returns:
+            w (struct_symMX): decision variable
+        """
+        w = struct_symMX([
+        entry('mu_proj', repeat=self.N-1)
+        ])
+        return w
+    
+    def get_parameters_structure(self):
+        """Builds the the parameters structure
+        
+        Returns: 
+            p (struct_symMX): parameter structure
+        """
+        p = struct_symMX([
+        entry('mu_plus', repeat=self.N-1),
+        entry('peak_weight')
+        ])
+        return p
+    
+    def get_initial_state(self):
+        """Builds initial decision variable state from params
+        
+        Returns:
+            w0 (DMStruct): initial state for optimization
+        """
+        w0 = self.w(0)
+        return w0
+    
+    def get_state_bounds(self):
+        """Builds bounds on the state w
+        
+        Returns:
+            lbw (DMStruct): lower bounds on w
+            ubw (DMStruct): upper bounds on w
+        """
+        lbw = copy(self.w)(-inf)
+        ubw = copy(self.w)(inf)
+        lbw['mu_proj', :] = 0 # Projection to keep mu positive
+        return lbw, ubw
+    
+    def get_numerical_parameters(self):
+        """Builds numerical optimization parameters from params
+        
+        Returns:
+            p_num (DMStruct): numerical parameters for optimization
+        """
+        p_num = self.p(0)
+        p_num['peak_weight'] = self.peak_weight
+        return p_num
+    
+    def get_cost_funtion(self):
+        """Builds the cost function
+        
+        Returns:
+            J (MX): cost function
+        """
+        J = 0
+        for k in range(self.N-1):
+            J += 0.5 * (self.w['mu_proj', k] - self.p['mu_plus', k])**2
+        return J
+    
+    def get_constraint_functions(self):
+        """Builds constraint functions and bounds
+        
+        Returns:
+            g (list(MX)): constraint functions
+            lbg (list): lower bounds on g
+            ubg (list): upper bounds on g
+        """
+        g = []
+        lbg = []
+        ubg = []
+        
+        mu_sum = 0
+        for k in range(self.N - 1):    
+            mu_sum += self.p['mu_plus', k]
+        # 0 \leq w - 1^T \mu \leq 0
+        g.append(self.p['weight'] - mu_sum) # Projection to meet function
+        lbg.append(0)
+        ubg.append(0)
+                
+        return g, lbg, ubg
+    
+    def get_solver(self):
+        """Builds casadi non linear programming solver
+        
+        Returns:
+            solver (casadi::Function): NLP solver for opt. problem
+        """
+        g, self.lbg, self.ubg = self.get_constraint_functions()
+        mpc_problem = {
+            'f': self.get_cost_function(), 
+            'x': self.w, 
+            'g': vertcat(*(g)), 
+            'p': self.p
+            }
+        opts = {'ipopt.print_level':0, 'print_time':0}
+        return nlpsol('solver', 'ipopt', mpc_problem, opts)
+    
+    def solve_optimization(self):
+        """Completes optimization for one MPC step
+
+        Returns:
+            x (list): optimized state variables
+            f (list): optimal cost function value
+        """
+        solution = self.solver(
+            x0=self.w0, 
+            lbx=self.lbw,
+            ubx=self.ubw,
+            lbg=self.lbg, 
+            ubg=self.ubg, 
+            p=self.p_num
+            )
+        assert self.solver.stats()['success']
+        # print(f'home action PID: {os.getpid()}')
+        return solution['x']#, solution['f']
+    
+    def set_optimal_state(self, w_res):
+        """Set internal optimal state with result from optimization
+        
+        """
+        if not isinstance(w_res, structure3.DMStruct):
+            w_res = self.w(w_res)
+        self.w_opt = w_res
+        
+    def set_initial_state(self, w_res):
+        """Set internal initial state
+        
+        """
+        if not isinstance(w_res, structure3.DMStruct):
+            w_res = self.w(w_res)
+        self.w0 = w_res
+    
+
+    def update_parameters_generic(self, **kwargs):
+        """Modulary updates parameters, assuming they are already of the right
+        size.
+        
+        """
+        for key, value in kwargs.items():
+            self.p_num[key] = list(value) 
