@@ -1863,7 +1863,7 @@ class ProximalGradientSolver():
         p_num['peak_weight'] = self.peak_weight
         return p_num
     
-    def get_cost_funtion(self):
+    def get_cost_function(self):
         """Builds the cost function
         
         Returns:
@@ -1888,9 +1888,9 @@ class ProximalGradientSolver():
         
         mu_sum = 0
         for k in range(self.N - 1):    
-            mu_sum += self.p['mu_plus', k]
+            mu_sum += self.w['mu_proj', k]
         # 0 \leq w - 1^T \mu \leq 0
-        g.append(self.p['weight'] - mu_sum) # Projection to meet function
+        g.append(self.p['peak_weight'] - mu_sum) # Projection to meet function
         lbg.append(0)
         ubg.append(0)
                 

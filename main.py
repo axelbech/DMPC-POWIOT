@@ -31,8 +31,8 @@ from wrappers import (
     DMPCWrapperSerialProxGrad,
 )
 
-N = 100
-T = 50
+N = 10
+T = 10
 
 n_houses = 2
 p_max = 1.5
@@ -141,16 +141,25 @@ for house in params_localized:
     params_localized[house]['opt_params']['peak_weight'] = peak_weight
     params_localized[house]['initial_state']['peak_state'] = 0
     
+    
+peak_weight_single = 0.5 * N
 params_single_peak = copy.copy(params)
 del params_single_peak['max_total_power']
-params_single_peak['peak']['opt_params']['peak_weight'] = 0.01 * N
+params_single_peak['peak']['opt_params']['peak_weight'] = peak_weight_single
 
 
 if __name__ == '__main__':
-    cmpc = MPCCentralizedHomeSinglePeak(N, T, 'cent', params_single_peak)
-    wrapper = MPCWrapper(N, T, [cmpc])
-    wrapper.run_full()
-    wrapper.persist_results('data/runs/')
+    proxGradSolver = ProximalGradientSolver(N, peak_weight_single)
+    proxGradSolver.update_parameters_generic(
+        mu_plus = [-i + 3 for i in range(N-1)]
+    )
+    dv = proxGradSolver.solve_optimization()
+    print(dv)
+# if __name__ == '__main__':
+#     cmpc = MPCCentralizedHomeSinglePeak(N, T, 'cent', params_single_peak)
+#     wrapper = MPCWrapper(N, T, [cmpc])
+#     wrapper.run_full()
+#     wrapper.persist_results('data/runs/')
     
 
 
