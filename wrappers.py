@@ -496,12 +496,11 @@ class DMPCWrapperSerial(MPCWrapperSerial):
                 dual_updates += mpc.get_dual_update_contribution()
                 
             dual_updates += self.dual_update_constant
-            dual_update_step_size = 3 / np.sqrt(1+it) # alpha value
+            dual_update_step_size = 2 / np.sqrt(1+it) # alpha value
             dual_updates *= dual_update_step_size # alpha * residual
             self.dual_variables += dual_updates
-            # self.dual_variables -= dual_updates #Testing negative update
-            self.project_dual_variables(self)
-            self.dual_variables[self.dual_variables < 0] = 0 # Project DV
+            self.project_dual_variables()
+            # self.dual_variables[self.dual_variables < 0] = 0 # Project DV
             
             f_diff = np.abs(f_sum - self.f_sum_last)
             self.f_sum_last = f_sum
@@ -558,4 +557,5 @@ class DMPCWrapperSerialProxGrad(DMPCWrapperSerial):
         self.proximalGradientSolver.update_parameters_generic(
             mu_plus = self.dual_variables
         )
-        self.dual_variables = self.proximalGradientSolver.solve_optimization()
+        dual_variables = self.proximalGradientSolver.solve_optimization()
+        self.dual_variables = np.array(dual_variables).flatten()

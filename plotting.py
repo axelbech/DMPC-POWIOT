@@ -62,7 +62,7 @@ def filename_splitter(fname):
 
 def plot_dv_traj(dv_traj):
     if isinstance(dv_traj, list):
-        dv_traj = np.array(data['dv_traj']) 
+        dv_traj = np.array(dv_traj) 
     x, y = np.meshgrid(np.arange(dv_traj.shape[1]), np.arange(dv_traj.shape[0]))
     z = dv_traj
     figdv, axdv = plt.subplots(subplot_kw={"projection": "3d"})

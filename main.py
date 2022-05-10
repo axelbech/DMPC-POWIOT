@@ -31,8 +31,8 @@ from wrappers import (
     DMPCWrapperSerialProxGrad,
 )
 
-N = 10
-T = 10
+N = 100
+T = 50
 
 n_houses = 2
 p_max = 1.5
@@ -150,17 +150,33 @@ params_single_peak['peak']['opt_params']['peak_weight'] = peak_weight_single
 
 if __name__ == '__main__':
     proxGradSolver = ProximalGradientSolver(N, peak_weight_single)
-    proxGradSolver.update_parameters_generic(
-        mu_plus = [-i + 3 for i in range(N-1)]
+    mpcs = dict(
+    House1 = MPCSingleHomeDistributed(N, T, 'House1', params['House1']),
+    House2 =  MPCSingleHomeDistributed(N, T, 'House2', params['House2'])
     )
-    dv = proxGradSolver.solve_optimization()
-    print(dv)
+    wrapper = DMPCWrapperSerialProxGrad(N, T, mpcs, -max_total_power, 
+                                        dual_variables_length=N-1,
+                                        proximalGradientSolver=proxGradSolver)
+    wrapper.run_full()  
+    wrapper.persist_results('data/runs/')
+    
 # if __name__ == '__main__':
 #     cmpc = MPCCentralizedHomeSinglePeak(N, T, 'cent', params_single_peak)
 #     wrapper = MPCWrapper(N, T, [cmpc])
 #     wrapper.run_full()
-#     wrapper.persist_results('data/runs/')
+    # wrapper.persist_results('data/runs/')
     
+# if __name__ == '__main__':
+#     mpcs = dict(
+#         House1 = MPCSingleHome(N, T, 'House1', params['House1']),
+#         House2 =  MPCSingleHome(N, T, 'House2', params['House2'])
+#         )
+#     wrapper = MPCWrapperSerial(N, T, mpcs)
+#     wrapper.run_full()
+#     wrapper.persist_results('data/runs/')
+
+
+
 
 
 # if __name__ == '__main__':

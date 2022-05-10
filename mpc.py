@@ -378,7 +378,6 @@ class MPCSingleHome(MPC):
         
             J += self.p['energy_weight'] * self.p['spot_price', k]\
                 * self.w['input', k, 'P_hp']
-        # for k in range(self.N - 1): # Input not defined for the last timestep
         
         return J
     
@@ -1701,9 +1700,9 @@ class MPCCentralizedHomeSinglePeak(MPC):
             for home in self.homes:
                 power_sum += self.w[home, 'P_hp', k]
                 power_sum += self.p[home, 'ext_power', k]
-            g.append(self.w['peak_state'] - power_sum) # peak state must be greater than sum of power at k
-            lbg.append(0)
-            ubg.append(inf)
+            g.append(power_sum - self.w['peak_state']) # peak state must be greater than sum of power at k
+            lbg.append(-inf)
+            ubg.append(0)
                 
         return g, lbg, ubg
     
