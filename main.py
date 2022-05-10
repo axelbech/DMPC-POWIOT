@@ -13,12 +13,14 @@ from mpc import (
     MPCCentralizedHome,
     MPCCentralizedHomePeak, 
     MPCCentralizedHomePeakQuadratic, 
+    MPCCentralizedHomeSinglePeak,
     MPCPeakStateDistributed,
     MPCPeakStateDistributedQuadratic, 
     MPCSingleHome, 
     MPCSingleHomeDistributed, 
     MPCSingleHomePeak,
     MPCSingleHomePeakDistributed,
+    ProximalGradientSolver,
 )
 from wrappers import (
     MPCWrapper, 
@@ -26,6 +28,7 @@ from wrappers import (
     MPCWrapperSerial, 
     DMPCWrapperSerial,
     DMPCCoordinator,
+    DMPCWrapperSerialProxGrad,
 )
 
 N = 100
@@ -138,6 +141,17 @@ for house in params_localized:
     params_localized[house]['opt_params']['peak_weight'] = peak_weight
     params_localized[house]['initial_state']['peak_state'] = 0
     
+params_single_peak = copy.copy(params)
+del params_single_peak['max_total_power']
+params_single_peak['peak']['opt_params']['peak_weight'] = 0.01 * N
+
+
+if __name__ == '__main__':
+    cmpc = MPCCentralizedHomeSinglePeak(N, T, 'cent', params_single_peak)
+    wrapper = MPCWrapper(N, T, [cmpc])
+    wrapper.run_full()
+    wrapper.persist_results('data/runs/')
+    
 
 
 # if __name__ == '__main__':
@@ -155,14 +169,14 @@ for house in params_localized:
 #     wrapper.run_full()
 #     wrapper.persist_results('data/runs/')
 
-if __name__ == '__main__':
-    mpcs = dict(
-        House1 = MPCSingleHome(N, T, 'House1', params['House1']),
-        House2 =  MPCSingleHome(N, T, 'House2', params['House2'])
-        )
-    wrapper = MPCWrapper(N, T, [ctrl for ctrl in mpcs.values()])
-    wrapper.run_full()
-    wrapper.persist_results('data/runs/')
+# if __name__ == '__main__':
+#     mpcs = dict(
+#         House1 = MPCSingleHome(N, T, 'House1', params['House1']),
+#         House2 =  MPCSingleHome(N, T, 'House2', params['House2'])
+#         )
+#     wrapper = MPCWrapper(N, T, [ctrl for ctrl in mpcs.values()])
+#     wrapper.run_full()
+#     wrapper.persist_results('data/runs/')
     
     
 # if __name__ == '__main__':
