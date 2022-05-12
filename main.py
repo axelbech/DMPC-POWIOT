@@ -31,8 +31,8 @@ from wrappers import (
     DMPCWrapperSerialProxGrad,
 )
 
-N = 100
-T = 50
+N = 288
+T = 288
 
 n_houses = 2
 p_max = 1.5
@@ -59,10 +59,9 @@ with open(r'data\power\pwr_ext_5m_1129.json', 'r') as file:
     pwr_1129 = json.load(file)
 with open(r'data\power\pwr_ext_5m_1127.json', 'r') as file:
     pwr_1127 = json.load(file)
-ext_power_peak = (np.array(ext_power_avg) * 1.2).tolist()
-ext_power_avg = (np.array(ext_power_avg) * 0.6).tolist()
-pwr_1129 = (np.array(pwr_1129) * 0.6).tolist()
-pwr_1127 = (np.array(pwr_1127) * 0.6).tolist()
+ext_power_avg = (np.array(ext_power_avg) * 0.33).tolist() # 0.33 instead of 0.6 to emulate 1/3 size home
+pwr_1129 = (np.array(pwr_1129) * 0.33).tolist()
+pwr_1127 = (np.array(pwr_1127) * 0.33).tolist()
 ext_power_none = np.zeros((N+T,)).tolist()
 
 with open('data/housedata/outdoor_temp_5m.json', 'r') as file:
@@ -79,13 +78,13 @@ params = {
             'slack_min_weight': 1,
             'rho_out': 0.018,
             'rho_in': 0.37,
-            'COP': 3.5,
+            'COP': 2.5, #Colder outside  3.5,
             'outdoor_temperature': outdoor_temperature,
             'reference_temperature': list(ref_temp_fixed-2), # reference_temperature,
             'min_temperature': list(min_temp),
             'spot_price': spot_price,
-            'ext_power_real': ext_power_none,# ext_power_avg,# pwr_1127,
-            'ext_power_avg': ext_power_none, # ext_power_avg
+            'ext_power_real': pwr_1127, # ext_power_none,# ext_power_avg,# pwr_1127,
+            'ext_power_avg': ext_power_avg # ext_power_none, # ext_power_avg
         },
         'bounds': {
             'P_max': p_max,
@@ -102,13 +101,13 @@ params = {
             'slack_min_weight': 1,
             'rho_out': 0.018,
             'rho_in': 0.37,
-            'COP': 3.5,
+            'COP': 2.5, #Colder outside 3.5,
             'outdoor_temperature': outdoor_temperature,
             'reference_temperature': list(ref_temp_fixed+2), #reference_temperature,
             'min_temperature': list(min_temp),
             'spot_price': spot_price,
-            'ext_power_real': ext_power_none,# ext_power_avg, # pwr_1129,
-            'ext_power_avg': ext_power_none# ext_power_avg
+            'ext_power_real': pwr_1129, # ext_power_none,# ext_power_avg, # pwr_1129,
+            'ext_power_avg': ext_power_avg,# ext_power_none# ext_power_avg
         },
         'bounds': {
             'P_max': p_max,
@@ -120,9 +119,7 @@ params = {
     },
     'peak':{
         'opt_params': {
-            'peak_weight': peak_weight,
-            # 'ext_power_real': ext_power_peak, # QUICK FIX
-            # 'ext_power_avg':  ext_power_peak
+            'peak_weight': peak_weight
         },
         'bounds': {
             # 'max_total_power': n_houses * 10
@@ -148,23 +145,23 @@ del params_single_peak['max_total_power']
 params_single_peak['peak']['opt_params']['peak_weight'] = peak_weight_single
 
 
-if __name__ == '__main__':
-    proxGradSolver = ProximalGradientSolver(N, peak_weight_single)
-    mpcs = dict(
-    House1 = MPCSingleHomeDistributed(N, T, 'House1', params['House1']),
-    House2 =  MPCSingleHomeDistributed(N, T, 'House2', params['House2'])
-    )
-    wrapper = DMPCWrapperSerialProxGrad(N, T, mpcs, -max_total_power, 
-                                        dual_variables_length=N-1,
-                                        proximalGradientSolver=proxGradSolver)
-    wrapper.run_full()  
-    wrapper.persist_results('data/runs/')
-    
 # if __name__ == '__main__':
-#     cmpc = MPCCentralizedHomeSinglePeak(N, T, 'cent', params_single_peak)
-#     wrapper = MPCWrapper(N, T, [cmpc])
-#     wrapper.run_full()
-    # wrapper.persist_results('data/runs/')
+#     proxGradSolver = ProximalGradientSolver(N, peak_weight_single)
+#     mpcs = dict(
+#     House1 = MPCSingleHomeDistributed(N, T, 'House1', params['House1']),
+#     House2 =  MPCSingleHomeDistributed(N, T, 'House2', params['House2'])
+#     )
+#     wrapper = DMPCWrapperSerialProxGrad(N, T, mpcs, -max_total_power, 
+#                                         dual_variables_length=N-1,
+#                                         proximalGradientSolver=proxGradSolver)
+#     wrapper.run_full()  
+#     wrapper.persist_results('data/runs/')
+    
+if __name__ == '__main__':
+    cmpc = MPCCentralizedHomeSinglePeak(N, T, 'cent', params_single_peak)
+    wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
+    wrapper.run_full()
+    wrapper.persist_results('data/runs/')
     
 # if __name__ == '__main__':
 #     mpcs = dict(

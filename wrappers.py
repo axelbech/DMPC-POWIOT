@@ -472,10 +472,10 @@ class DMPCWrapperSerial(MPCWrapperSerial):
         
     def dual_decomposition(self):
         it = 0
-        maxIt = 30
+        maxIt = 60
         
         f_tol = 1e-3 * self.N
-        dv_tol = 1e-3
+        dv_tol = 5e-4
         
         while it < maxIt:
             # w0 = list(self.mpcs.values())[0].w0.master[0]
