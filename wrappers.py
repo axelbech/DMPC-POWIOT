@@ -153,7 +153,8 @@ class DMPCCoordinator():
         T: int,
         controllers: list,
         dual_update_constant: float,
-        dual_variables_length: int
+        dual_variables_length: int,
+        step_size: int = 1
         ):
         """Create a DMPC coordinator object
 
@@ -169,6 +170,7 @@ class DMPCCoordinator():
         self.controllers = controllers
         self.dual_update_constant = dual_update_constant
         self.dual_variables_length = dual_variables_length
+        self.step_size = step_size
         
         self.dual_variables = self.get_dual_variables()
         self.dual_variables_traj = self.get_dual_variables_trajectory()
@@ -187,8 +189,9 @@ class DMPCCoordinator():
         Returns:
             ndarray: dual variable trajectory
         """
-        dual_variables_traj = np.empty((self.T,self.dual_variables_length + self.T))
-        dual_variables_traj[:] = np.nan
+        # dual_variables_traj = np.empty((self.T,self.dual_variables_length + self.T))
+        # dual_variables_traj[:] = np.nan
+        dual_variables_traj = [] # Want list of lists now
         return dual_variables_traj
     
     def iterate_dual_variables(self):
@@ -203,7 +206,8 @@ class DMPCCoordinator():
         Args:
             t (int): time step
         """
-        self.dual_variables_traj[t, t:t+self.dual_variables_length] = self.dual_variables
+        # self.dual_variables_traj[t, t:t+self.dual_variables_length] = self.dual_variables
+        self.dual_variables_traj.append(self.dual_variables.tolist())
 
     def run_full(
         self,
@@ -258,7 +262,7 @@ class DMPCCoordinator():
                     dual_updates += private_coordination[controller]['dual_update_contribution']
                     
                 dual_updates += self.dual_update_constant
-                dual_update_step_size = 0.15 # 2 / np.sqrt(1+it) 
+                dual_update_step_size = self.step_size / np.sqrt(1+it) # 0.15 # 2 / np.sqrt(1+it) 
                 dual_updates *= dual_update_step_size
                 self.dual_variables += dual_updates
                 self.dual_variables[self.dual_variables < 0] = 0
@@ -290,7 +294,7 @@ class DMPCCoordinator():
         for controller in self.controllers: # For terminating mpcs
             private_coordination[controller]['f_opt'] = None
             
-        return_dict['dv_traj'] = self.dual_variables_traj.tolist()
+        return_dict['dv_traj'] = self.dual_variables_traj #.tolist()
             
 
 class MPCWrapperSerial():
@@ -383,7 +387,8 @@ class DMPCWrapperSerial(MPCWrapperSerial):
         T: int, 
         mpcs: dict,
         dual_update_constant: float,
-        dual_variables_length: int
+        dual_variables_length: int,
+        step_size: int = 1,
         ):
         
         super().__init__(N, T, mpcs)
@@ -391,6 +396,7 @@ class DMPCWrapperSerial(MPCWrapperSerial):
         self.dual_variables = self.get_dual_variables()
         self.dual_variables_traj = self.get_dual_variables_trajectory()
         self.dual_update_constant = dual_update_constant
+        self.step_size = step_size
         
         self.f_sum_last = 1e6
     
@@ -400,31 +406,6 @@ class DMPCWrapperSerial(MPCWrapperSerial):
         Returns:
             ndarray: dual variables
         """
-    #     return np.array([1.19259146e+01, 1.02966181e+01, 8.67673911e+00, 7.22517164e+00,
-    #    5.86609441e+00, 4.66012486e+00, 3.60996313e+00, 2.71748427e+00,
-    #    1.98811960e+00, 1.44316455e+00, 1.16754155e+00, 9.48234419e-01,
-    #    7.48845008e-01, 5.69367301e-01, 4.09825887e-01, 3.96850465e-01,
-    #    2.78072374e-01, 1.78606017e-01, 9.82982378e-02, 3.78909828e-02,
-    #    6.95153734e-04, 5.67024178e-08, 4.06133252e-08, 3.42421441e-08,
-    #    3.06327286e-08, 2.79391685e-08, 2.05145103e-08, 6.05080180e-08,
-    #    3.40760704e-08, 3.17998452e-08, 3.06076766e-08, 3.00102460e-08,
-    #    2.97992269e-08, 2.99065590e-08, 3.03665079e-08, 3.13342664e-08,
-    #    3.31828249e-08, 3.68187924e-08, 1.80845452e-07, 1.55690903e-08,
-    #    2.28578396e-08, 2.41726596e-08, 2.51374890e-08, 2.59103695e-08,
-    #    2.66544038e-08, 2.75601986e-08, 2.89082990e-08, 3.12257725e-08,
-    #    3.57772316e-08, 6.25740404e-08, 2.71315489e-02, 1.15478558e-08,
-    #    1.89033426e-08, 2.08516414e-08, 2.28388715e-08, 2.54093049e-08,
-    #    2.97793831e-08, 3.99390722e-08, 3.20203733e-07, 4.28398388e-02,
-    #    1.20855532e-01, 2.33787171e-01, 4.03911091e-01, 6.51847332e-09,
-    #    8.64706643e-09, 1.26476499e-08, 1.59067970e-08, 1.95629528e-08,
-    #    2.48085939e-08, 3.63283677e-08, 1.28715523e-03, 5.78004213e-02,
-    #    1.49774419e-01, 2.78152399e-01, 4.66683428e-01, 6.26473547e-09,
-    #    8.36364012e-09, 1.12278037e-08, 1.53692174e-08, 1.88311314e-08,
-    #    2.21544460e-08, 2.55050310e-08, 2.95370606e-08, 3.60171342e-08,
-    #    6.27833773e-08, 1.76701929e-02, 1.04874956e-01, 6.66993724e-09,
-    #    8.71164638e-09, 8.89543034e-09, 8.78448386e-09, 8.37538154e-09,
-    #    7.58706072e-09, 6.26473535e-09, 6.26473357e-09, 6.26473346e-09,
-    #    6.26473343e-09, 6.26473341e-09, 6.26473340e-09])
         return np.zeros(self.dual_variables_length)
     
     def get_dual_variables_trajectory(self):
@@ -433,8 +414,9 @@ class DMPCWrapperSerial(MPCWrapperSerial):
         Returns:
             ndarray: dual variable trajectory
         """
-        dual_variables_traj = np.empty((self.T,self.dual_variables_length + self.T))
-        dual_variables_traj[:] = np.nan
+        # dual_variables_traj = np.empty((self.T,self.dual_variables_length + self.T))
+        # dual_variables_traj[:] = np.nan
+        dual_variables_traj = [] # Want list of lists instead of array with NaNs
         return dual_variables_traj
     
     def iterate_dual_variables(self):
@@ -449,7 +431,8 @@ class DMPCWrapperSerial(MPCWrapperSerial):
         Args:
             t (int): time step
         """
-        self.dual_variables_traj[t, t:t+self.dual_variables_length] = self.dual_variables
+        # self.dual_variables_traj[t, t:t+self.dual_variables_length] = self.dual_variables
+        self.dual_variables_traj.append(self.dual_variables.tolist())
         
     def update_mpc_dual_variables(self):
         """Update dual variables in mpcs with current dual variable
@@ -459,7 +442,7 @@ class DMPCWrapperSerial(MPCWrapperSerial):
             
     def persist_results(self, path=''):
         folder_name = super().persist_results(path)
-        dv_list = self.dual_variables_traj.tolist()
+        dv_list = self.dual_variables_traj #.tolist()
         file_name = 'dv_traj.json'
         with open(path + folder_name + '/' + file_name, 'w') as file:
             json.dump(dv_list, file, indent=4)
@@ -496,7 +479,7 @@ class DMPCWrapperSerial(MPCWrapperSerial):
                 dual_updates += mpc.get_dual_update_contribution()
                 
             dual_updates += self.dual_update_constant
-            dual_update_step_size = 2 / np.sqrt(1+it) # alpha value
+            dual_update_step_size = self.step_size / np.sqrt(1+it) # 2 / np.sqrt(1+it) # alpha value
             dual_updates *= dual_update_step_size # alpha * residual
             self.dual_variables += dual_updates
             self.project_dual_variables()

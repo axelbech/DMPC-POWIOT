@@ -1,37 +1,40 @@
-from casadi import *
-from casadi.tools import *
+import matplotlib.pyplot as plt
 import numpy as np
-from time import time
-from pickle import dumps, loads
+from matplotlib import cm
 
-N = 5
-avg_power = 1
+import json
 
-x = struct_symMX([entry('P',repeat=N)])
-lbx = x(0)
-ubx = x(inf)
-
-p = struct_symMX([entry('r',repeat=N)])
-
-J = 0
-power_sum = 0
-for i in range(N):
-    J += (x['P',i] - p['r',i])**2
-    power_sum += x['P',i]
+def plot_dv_traj(dv_traj):
+    if isinstance(dv_traj, list):
+        dv_traj = np.array(dv_traj) 
+    x, y = np.meshgrid(np.arange(dv_traj.shape[1]), np.arange(dv_traj.shape[0]))
+    z = dv_traj
+    figdv, axdv = plt.subplots(subplot_kw={"projection": "3d"})
+    axdv.set_title('Dual variable values\nSliding window')
+    surf = axdv.plot_surface(x, y, z, cmap=cm.coolwarm)
+    axdv.zaxis.set_rotate_label(False)
+    axdv.set_xlabel('Time')
+    axdv.set_ylabel('Iteration')
+    axdv.set_zlabel('$\lambda$')
+    axdv.set_zlim(0,10)
+    figdv.colorbar(surf, shrink=0.5, aspect=5)
+    plt.show()
     
-g = power_sum
-lbg = 0
-ubg =  avg_power * N
+def get_dv_padded(dv : list[list]):
+    dv_len = len(dv[0])
+    T = len(dv)
+    dva = np.empty((T, dv_len+T-1))
+    dva[:] = np.nan
+    for t in range(T):
+        dva[t, t:t+dv_len] = dv[t]
+    return dva
 
-problem = {'f': J, 'x': x, 'g': g, 'p': p}
-opts = {'ipopt.print_level':0, 'print_time':0}
-solver = nlpsol('solver', 'ipopt', problem, opts)
+fpath = r'data\runs\MPCWrapperSerial-N288T288-20220513-152912\MPCCentralizedHomeSinglePeak-cent.json'
 
-x0 = x(avg_power)
-refs = [avg_power + (i/N)  for i in range(N)]
-p_num = p(refs)
+with open(fpath, 'r') as file:
+    res = json.load(file)
 
-
-solution = solver(x0=x0, lbx=lbx, ubx=ubx, lbg=lbg, ubg=ubg, p=p_num)['x']
-
-print(solution)
+dv = res['traj_full']['dv_traj']
+dva = get_dv_padded(dv)
+# print(np.max(np.array(dv)))
+plot_dv_traj(dva)

@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 
 from mpc import (
-    MPCCentralizedHome,
+    MPCCentralized,
+    MPCCentralizedHomeFixed,
     MPCCentralizedHomePeak, 
     MPCCentralizedHomePeakQuadratic, 
     MPCCentralizedHomeSinglePeak,
@@ -55,15 +56,34 @@ with open(r'data\spotdata\spot_price_5m.json', 'r') as file:
     
 with open(r'data\power\pwr_ext_avg.json', 'r') as file:
     ext_power_avg = json.load(file)
-with open(r'data\power\pwr_ext_5m_1129.json', 'r') as file:
-    pwr_1129 = json.load(file)
+with open(r'data\power\pwr_ext_5m_1119.json', 'r') as file:
+    pwr_1119 = json.load(file)
+with open(r'data\power\pwr_ext_5m_1121.json', 'r') as file:
+    pwr_1121 = json.load(file)
+with open(r'data\power\pwr_ext_5m_1123.json', 'r') as file:
+    pwr_1123 = json.load(file)
+with open(r'data\power\pwr_ext_5m_1125.json', 'r') as file:
+    pwr_1125 = json.load(file)
 with open(r'data\power\pwr_ext_5m_1127.json', 'r') as file:
     pwr_1127 = json.load(file)
-ext_power_avg = (np.array(ext_power_avg) * 0.33).tolist() # 0.33 instead of 0.6 to emulate 1/3 size home
-pwr_1129 = (np.array(pwr_1129) * 0.33).tolist()
-pwr_1127 = (np.array(pwr_1127) * 0.33).tolist()
+with open(r'data\power\pwr_ext_5m_1129.json', 'r') as file:
+    pwr_1129 = json.load(file)
+with open(r'data\power\pwr_ext_5m_1205.json', 'r') as file:
+    pwr_1205 = json.load(file)
+with open(r'data\power\pwr_ext_5m_1208.json', 'r') as file:
+    pwr_1208 = json.load(file)
+pwr_mult = 0.33
+ext_power_avg = (np.array(ext_power_avg) * pwr_mult).tolist() # 0.33 instead of 0.6 to emulate 1/3 size home
+pwr_1119 = (np.array(pwr_1119) * pwr_mult).tolist()
+pwr_1121 = (np.array(pwr_1121) * pwr_mult).tolist()
+pwr_1123 = (np.array(pwr_1123) * pwr_mult).tolist()
+pwr_1125 = (np.array(pwr_1125) * pwr_mult).tolist()
+pwr_1127 = (np.array(pwr_1127) * pwr_mult).tolist()
+pwr_1129 = (np.array(pwr_1129) * pwr_mult).tolist()
+pwr_1205 = (np.array(pwr_1205) * pwr_mult).tolist()
+pwr_1208 = (np.array(pwr_1208) * pwr_mult).tolist()
 ext_power_none = np.zeros((N+T,)).tolist()
-
+ext_pwr_list = [pwr_1127,pwr_1129,pwr_1119,pwr_1121,pwr_1123,pwr_1125,pwr_1205,pwr_1208]
 with open('data/housedata/outdoor_temp_5m.json', 'r') as file:
     outdoor_temperature = json.load(file)
 
@@ -80,7 +100,7 @@ params = {
             'rho_in': 0.37,
             'COP': 2.5, #Colder outside  3.5,
             'outdoor_temperature': outdoor_temperature,
-            'reference_temperature': list(ref_temp_fixed-2), # reference_temperature,
+            'reference_temperature': list(ref_temp_fixed), # reference_temperature,
             'min_temperature': list(min_temp),
             'spot_price': spot_price,
             'ext_power_real': pwr_1127, # ext_power_none,# ext_power_avg,# pwr_1127,
@@ -103,7 +123,7 @@ params = {
             'rho_in': 0.37,
             'COP': 2.5, #Colder outside 3.5,
             'outdoor_temperature': outdoor_temperature,
-            'reference_temperature': list(ref_temp_fixed+2), #reference_temperature,
+            'reference_temperature': list(ref_temp_fixed), #reference_temperature,
             'min_temperature': list(min_temp),
             'spot_price': spot_price,
             'ext_power_real': pwr_1129, # ext_power_none,# ext_power_avg, # pwr_1129,
@@ -128,21 +148,23 @@ params = {
             'peak_state': 0
         }
     },
-    'max_total_power': max_total_power
 }
 
 params_localized = copy.copy(params)
 del params_localized['peak']
-del params_localized['max_total_power']
 for house in params_localized:
     params_localized[house]['opt_params']['peak_weight'] = peak_weight
     params_localized[house]['initial_state']['peak_state'] = 0
     
-    
 peak_weight_single = 0.5 * N
 params_single_peak = copy.copy(params)
-del params_single_peak['max_total_power']
 params_single_peak['peak']['opt_params']['peak_weight'] = peak_weight_single
+
+params_8 = copy.copy(params_single_peak)
+for i in range(3,9):
+    house = "House" + str(i)
+    params_8[house] = copy.deepcopy(params_8['House1'])
+    params_8[house]['opt_params']['ext_power_real'] = ext_pwr_list[i-1]
 
 
 # if __name__ == '__main__':
@@ -158,7 +180,7 @@ params_single_peak['peak']['opt_params']['peak_weight'] = peak_weight_single
 #     wrapper.persist_results('data/runs/')
     
 if __name__ == '__main__':
-    cmpc = MPCCentralizedHomeSinglePeak(N, T, 'cent', params_single_peak)
+    cmpc = MPCCentralizedHomeSinglePeak(N, T, 'cent', params_8, N-1)
     wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
     wrapper.run_full()
     wrapper.persist_results('data/runs/')
@@ -173,7 +195,15 @@ if __name__ == '__main__':
 #     wrapper.persist_results('data/runs/')
 
 
-
+# if __name__ == '__main__':
+#     mpcs = {}
+#     for i in range(1,9):
+#         mpcname = 'House' + str(i)
+#         mpcs[mpcname] = MPCSingleHome(N, T, mpcname, params_8[mpcname])
+#     wrapper = MPCWrapper(N, T, list(mpcs.values()))
+#     # wrapper = MPCWrapperSerial(N, T, mpcs)
+#     wrapper.run_full()
+#     wrapper.persist_results('data/runs/')
 
 
 # if __name__ == '__main__':

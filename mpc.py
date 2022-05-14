@@ -904,21 +904,7 @@ class MPCPeakStateDistributed(MPCDistributed):
         self.w0['peak_state', -1] = self.w_opt['peak_state', -1]
         
     def update_constraints(self):
-        # Need numerical tweaking to ensure feasability
-        # self.lbw['peak_state'] = self.p_num['ext_power']
         self.lbw['peak_state', 0] = round(float(self.w_opt['peak_state',0]), 6)
-        # if float(self.p_num['ext_power',0]) >= round(float(self.w_opt['peak_state',0]), 6):
-        #     self.lbw['peak_state', 0] = self.p_num['ext_power', 0]
-        
-    # def update_parameters(self, t): # ANOTHER QUICK FIX
-    #     opt_params = self.params['opt_params']
-    #     self.p_num['ext_power'] = (
-    #         opt_params['ext_power_avg'][t:t+self.N-1]
-    #     )
-    #     self.p_num['ext_power', 0] = (
-    #         opt_params['ext_power_real'][t]
-    #     )
-    #     return
 
 
 class MPCPeakStateDistributedQuadratic(MPCPeakStateDistributed):
@@ -930,6 +916,79 @@ class MPCPeakStateDistributedQuadratic(MPCPeakStateDistributed):
             J -= self.p['dual_variables', k] * self.w['peak_state', k]
             J += self.p['peak_weight'] * self.w['peak_state', k]**2
         return J
+
+
+class MPCSinglePeakStateDistributed(MPCDistributed):
+    def get_decision_variables(self):
+        return struct_symMX([entry('peak_state')])
+    
+    def get_parameters_structure(self):
+        return struct_symMX([
+            entry('peak_weight_quad'), 
+            entry('dual_variables', repeat=self.N-1),
+            ])
+
+    def get_cost_function(self):
+        J = 0
+        J += self.p['peak_weight_quad'] * self.w['peak_state']**2
+        return J
+            
+    def get_constraint_functions(self):
+        g = []; lbg = []; ubg = []
+        return g, lbg, ubg
+    
+    def get_initial_state(self):
+        w0 = copy(self.w)(0)
+        return w0
+    
+    def get_state_bounds(self):
+        lbw = copy(self.w)(-inf)
+        ubw = copy(self.w)(inf)
+        return lbw, ubw
+    
+    def get_numerical_parameters(self):
+        p_num = self.p(0)
+        p_num['peak_weight_quad'] = self.params['opt_params']['peak_weight_quad']
+        return p_num
+    
+    def get_trajectory_structure(self):
+        traj_full = {}
+        traj_full['peak_state'] = []
+        return traj_full
+    
+    def get_dual_update_contribution(self):
+        return -np.array(vertcat(*self.w_opt['peak_state'])).flatten()
+    
+    def update_trajectory(self):
+        self.traj_full['peak_state'].append(
+            round(self.w_opt['peak_state'].__float__(), 6)
+            )
+
+
+class MPCCentralized(MPC):
+    def __init__(self, N: int, T: int, name: str, params: dict,
+                 dual_variables_length: int):
+        super().__init__(N, T, name, params)
+        self.dual_variables_length = dual_variables_length
+        
+    def get_trajectory_structure(self):
+        traj_full = dict(dv_traj = [])
+        return traj_full
+        
+    def solve_optimization(self):
+        solution = self.solver(
+            x0=self.w0, 
+            lbx=self.lbw,
+            ubx=self.ubw,
+            lbg=self.lbg, 
+            ubg=self.ubg, 
+            p=self.p_num
+            )
+        assert self.solver.stats()['success']
+        lam_g = np.array(solution['lam_g']).flatten()
+        lam_dv = lam_g[-self.dual_variables_length:].tolist()
+        self.traj_full['dv_traj'].append(lam_dv)
+        return solution['x'], solution['f']
 
 
 class MPCCentralizedHomePeak(MPC):
@@ -1247,7 +1306,7 @@ class MPCCentralizedHomePeakQuadratic(MPCCentralizedHomePeak):
         return J
 
 
-class MPCCentralizedHome(MPC):
+class MPCCentralizedHomeFixed(MPC):
     
     def __init__(self, N: int, T: int, name: str, params: dict):
         homes = list(params.keys())
@@ -1504,14 +1563,14 @@ class MPCCentralizedHome(MPC):
         return solution['x'], solution['f']
 
 
-class MPCCentralizedHomeSinglePeak(MPC):
+class MPCCentralizedHomeSinglePeak(MPCCentralized, MPCSingleHome):
     
-    def __init__(self, N: int, T: int, name: str, params: dict):
+    def __init__(self, N: int, T: int, name: str, params: dict, 
+                 dual_variables_length: int):
         homes = list(params.keys())
         if 'peak' in homes: homes.remove('peak')
-        if 'max_total_power' in homes: homes.remove('max_total_power')
         self.homes = homes
-        super().__init__(N, T, name, params)
+        super().__init__(N, T, name, params, dual_variables_length)
         
     def get_parameters_structure(self):
         param_list = []
@@ -1540,31 +1599,6 @@ class MPCCentralizedHomeSinglePeak(MPC):
         p = struct_symMX(param_list)
         
         return p
-        
-    def get_dynamics_functions(self):
-        wall = MX.sym('wall_temp')
-        room = MX.sym('room_temp')
-        OutTemp = MX.sym('OutTemp')
-
-        rho_out = MX.sym('rho_out')
-        rho_in = MX.sym('rho_in')
-        wall_plus = wall + rho_out * (OutTemp - wall) + rho_in * (room - wall)
-        wall_func = Function(
-            'wall_plus', 
-            [rho_out, rho_in, wall, room, OutTemp],
-            [wall_plus]
-            )
-
-        COP = MX.sym('COP')
-        Pow = MX.sym('Pow')
-        room_plus = room + rho_in * (wall - room) + COP * Pow
-        room_func = Function(
-            'room_plus',
-            [rho_in, room, wall, COP, Pow],
-            [room_plus]
-            )
-
-        return wall_func, room_func
 
     def get_decision_variables(self):
         state_list = []
@@ -1624,7 +1658,7 @@ class MPCCentralizedHomeSinglePeak(MPC):
         return p_num
     
     def get_trajectory_structure(self):
-        traj_full = {}
+        traj_full = super().get_trajectory_structure()
         for home in self.homes:
             traj_full[home] = {}
             traj_full[home]['room_temp'] = []
@@ -1759,26 +1793,64 @@ class MPCCentralizedHomeSinglePeak(MPC):
             )
         return
 
-    def solve_optimization(self):
-        """Completes optimization for one MPC step
 
-        Returns:
-            x (list): optimized state variables
-            f (list): optimal cost function value
-        """
-        solution = self.solver(
-            x0=self.w0, 
-            lbx=self.lbw,
-            ubx=self.ubw,
-            lbg=self.lbg, 
-            ubg=self.ubg, 
-            p=self.p_num
-            )
-        # print(f'home action PID: {os.getpid()}')
-        assert self.solver.stats()['success']
-        lam_g = np.array(solution['lam_g']).flatten()
-        lam_pk = lam_g[-self.N+1:]
-        return solution['x'], solution['f']
+class MPCCentralizedSinglePeakConvex(MPCCentralizedHomeSinglePeak):
+    
+    def get_parameters_structure(self):
+        param_list = []
+        for home in self.homes:
+            home_struct = struct_symMX([
+                entry('energy_weight'),
+                entry('comfort_weight'),
+                entry('slack_min_weight'),
+                entry('rho_out'),
+                entry('rho_in'),
+                entry('COP'),
+                entry('outdoor_temperature', repeat=self.N),
+                entry('reference_temperature', repeat=self.N),
+                entry('min_temperature', repeat=self.N),
+                entry('spot_price', repeat=self.N-1),
+                entry('ext_power', repeat=self.N-1)
+            ])
+            param_list.append(entry(home, struct=home_struct))
+        peak_struct = struct_symMX([
+            entry('peak_weight_quad')
+            ])
+        param_list.append(entry('peak_state', struct=peak_struct))
+        p = struct_symMX(param_list)
+        return p
+    
+    def get_numerical_parameters(self):
+        p_num = self.p(0)
+        for home in self.homes:
+            opt_params = self.params[home]['opt_params']
+            p_num[home,'energy_weight'] = opt_params['energy_weight']
+            p_num[home,'comfort_weight'] = opt_params['comfort_weight']
+            p_num[home,'slack_min_weight'] = opt_params['slack_min_weight']
+            p_num[home,'rho_out'] = opt_params['rho_out']
+            p_num[home,'rho_in'] = opt_params['rho_in']
+            p_num[home,'COP'] = opt_params['COP']
+            
+        p_num['peak_state', 'peak_weight_quad'] = \
+            self.params['peak']['opt_params']['peak_weight_quad']
+        return p_num
+    
+    def get_cost_function(self):
+        J = 0
+                
+        for home in self.homes:
+            for k in range(self.N-1):
+                J += self.p[home, 'comfort_weight'] * \
+    (self.w[home, 'room_temp', k+1] - self.p[home, 'reference_temperature', k+1])**2
+    
+                J += self.p[home,'slack_min_weight']*self.w[home,'slack_temp',k+1]**2
+
+                J += self.p[home, 'energy_weight'] * \
+                    self.p[home, 'spot_price', k] * self.w[home, 'P_hp', k]
+
+        J += self.p['peak_state', 'peak_weight_quad'] * self.w['peak_state']**2 
+        
+        return J
 
 
 class ProximalGradientSolver():

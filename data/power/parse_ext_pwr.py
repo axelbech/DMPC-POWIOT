@@ -62,68 +62,69 @@ sampling_interval_seconds = 300
 
 
 
-powers = []
-filelist = os.listdir(r'data\power')
-for file in filelist:
-    if 'pwr_ext_5m_' in file:
-        with open('data/power/' + file, 'r') as f:
-            powers.append(json.load(f))
+# powers = []
+# filelist = os.listdir(r'data\power')
+# for file in filelist:
+#     if 'pwr_ext_5m_' in file:
+#         with open('data/power/' + file, 'r') as f:
+#             powers.append(json.load(f))
             
-start_time = datetime.datetime(2021, 11, 29, 0, 0, 0, tzinfo=timezone('Europe/Oslo'))
-l = len(powers[0])
-time = [0] * l
-for i in range(l):
-    time[i] = start_time + datetime.timedelta(seconds=i*300)
-
-powers = powers[:]
-powerSingle = copy.copy(powers)
-powers = []
-for power in powerSingle:
-    middleIdx = int(len(power) / 2)
-    powers.append(power[:middleIdx])
-    powers.append(power[middleIdx:])
-time = time[:middleIdx]
-fig, ax = plt.subplots()
-for power in powers:
-    ax.plot(time, power, linewidth=0.6)
-ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-ax.set_title('Non-heatpump power use')
-ax.set_ylabel('kW')
-
-avg = np.array(powers)
-avg = np.average(avg, axis=0)
-kernel_size = 20
-avg = np.pad(avg, (kernel_size, kernel_size), 'edge')
-kernel = np.ones(kernel_size) / kernel_size
-avg = np.convolve(avg, kernel, mode='same')
-avg = avg[kernel_size:-kernel_size]
-fig2, ax2 = plt.subplots()
-ax2.plot(time, avg, linewidth=1)
-ax2.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-ax2.set_title('Smoothed, average, non-heatpump power use')
-ax2.set_ylabel('kW')
-
-avg_extended = np.concatenate((avg, avg)).tolist()
-with open('data/power/pwr_ext_avg.json', 'w') as file:
-    json.dump(avg_extended, file)
-
-plt.show()
-
-
-# with open(r'data\spotdata\spot_price_5m.json', 'r') as file:
-#     res = json.load(file)
-    
 # start_time = datetime.datetime(2021, 11, 29, 0, 0, 0, tzinfo=timezone('Europe/Oslo'))
-# l = len(res)
+# l = len(powers[0])
 # time = [0] * l
 # for i in range(l):
 #     time[i] = start_time + datetime.timedelta(seconds=i*300)
-    
-# plt.plot(time, res)
-# ax = plt.gca()
-# fig = plt.gcf()
+
+# powers = powers[:]
+# powerSingle = copy.copy(powers)
+# powers = []
+# for power in powerSingle:
+#     middleIdx = int(len(power) / 2)
+#     powers.append(power[:middleIdx])
+#     powers.append(power[middleIdx:])
+# time = time[:middleIdx]
+# fig, ax = plt.subplots()
+# for power in powers:
+#     ax.plot(time, power, linewidth=0.6)
 # ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-# ax.set_title('Spot Prices')
-# ax.set_ylabel('øre/kWh' )
+# ax.set_title('Non-heatpump power use')
+# ax.set_ylabel('kW')
+
+# avg = np.array(powers)
+# avg = np.average(avg, axis=0)
+# kernel_size = 20
+# avg = np.pad(avg, (kernel_size, kernel_size), 'edge')
+# kernel = np.ones(kernel_size) / kernel_size
+# avg = np.convolve(avg, kernel, mode='same')
+# avg = avg[kernel_size:-kernel_size]
+# fig2, ax2 = plt.subplots()
+# ax2.plot(time, avg, linewidth=1)
+# ax2.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+# ax2.set_title('Smoothed, average, non-heatpump power use')
+# ax2.set_ylabel('kW')
+
+# avg_extended = np.concatenate((avg, avg)).tolist()
+# with open('data/power/pwr_ext_avg.json', 'w') as file:
+#     json.dump(avg_extended, file)
 
 # plt.show()
+
+
+with open(r'data\power\pwr_ext_avg.json', 'r') as file:
+    res = json.load(file)
+res = res[:288]
+    
+start_time = datetime.datetime(2021, 11, 29, 0, 0, 0)#, tzinfo=timezone('Europe/Oslo'))
+l = len(res)
+time = [0] * l
+for i in range(l):
+    time[i] = start_time + datetime.timedelta(seconds=i*300)
+    
+plt.plot(time, res)
+ax = plt.gca()
+fig = plt.gcf()
+ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+ax.set_title('Smoothed, Average Non-heatpump Power Use')
+ax.set_ylabel('kW')
+
+plt.show()
