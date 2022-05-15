@@ -458,7 +458,7 @@ class DMPCWrapperSerial(MPCWrapperSerial):
         maxIt = 60
         
         f_tol = 1e-3 * self.N
-        dv_tol = 5e-4
+        dv_tol = 2e-5
         
         while it < maxIt:
             # w0 = list(self.mpcs.values())[0].w0.master[0]
@@ -492,7 +492,7 @@ class DMPCWrapperSerial(MPCWrapperSerial):
             print(
                 f'dual decomp iteration {it} '
                 f'f_diff = {f_diff.flatten().flatten()} '
-                f'dual diff = {round(dv_diff,4)} '
+                f'dual diff = {round(dv_diff,5)} '
                 # f'dv = {self.dual_variables}'
                 f'dv = {round(self.dual_variables[0],2)} '
                 )

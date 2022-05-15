@@ -15,12 +15,14 @@ from mpc import (
     MPCCentralizedHomePeak, 
     MPCCentralizedHomePeakQuadratic, 
     MPCCentralizedHomeSinglePeak,
+    MPCCentralizedSinglePeakConvex,
     MPCPeakStateDistributed,
     MPCPeakStateDistributedQuadratic, 
     MPCSingleHome, 
     MPCSingleHomeDistributed, 
     MPCSingleHomePeak,
     MPCSingleHomePeakDistributed,
+    MPCSinglePeakDistributed,
     ProximalGradientSolver,
 )
 from wrappers import (
@@ -35,7 +37,7 @@ from wrappers import (
 N = 288
 T = 288
 
-n_houses = 2
+
 p_max = 1.5
 
 # outdoor_temperature = [10 for _ in range(N+T)]
@@ -87,7 +89,9 @@ ext_pwr_list = [pwr_1127,pwr_1129,pwr_1119,pwr_1121,pwr_1123,pwr_1125,pwr_1205,p
 with open('data/housedata/outdoor_temp_5m.json', 'r') as file:
     outdoor_temperature = json.load(file)
 
-peak_weight = 0.5
+n_houses = 2
+peak_weight = n_houses * 0.25
+peak_weight_quad = n_houses * 0.01 # 0.02
 max_total_power = n_houses * 0.2
 
 params = {
@@ -117,7 +121,7 @@ params = {
     'House2': {
         'opt_params': {
             'energy_weight': 0.01,
-            'comfort_weight': 0.1,
+            'comfort_weight': 0.05,
             'slack_min_weight': 1,
             'rho_out': 0.018,
             'rho_in': 0.37,
@@ -139,7 +143,8 @@ params = {
     },
     'peak':{
         'opt_params': {
-            'peak_weight': peak_weight
+            'peak_weight': peak_weight,
+            'peak_weight_quad': peak_weight_quad,
         },
         'bounds': {
             # 'max_total_power': n_houses * 10
@@ -156,9 +161,11 @@ for house in params_localized:
     params_localized[house]['opt_params']['peak_weight'] = peak_weight
     params_localized[house]['initial_state']['peak_state'] = 0
     
-peak_weight_single = 0.5 * N
+peak_weight_single = peak_weight * N # 0.5 * N
+peak_weight_quad_single = 1 # peak_weight_quad * N # 0.5 * N
 params_single_peak = copy.copy(params)
 params_single_peak['peak']['opt_params']['peak_weight'] = peak_weight_single
+params_single_peak['peak']['opt_params']['peak_weight_quad'] = peak_weight_quad_single
 
 params_8 = copy.copy(params_single_peak)
 for i in range(3,9):
@@ -166,6 +173,33 @@ for i in range(3,9):
     params_8[house] = copy.deepcopy(params_8['House1'])
     params_8[house]['opt_params']['ext_power_real'] = ext_pwr_list[i-1]
 
+
+
+
+if __name__ == '__main__':
+    mpcs = dict(
+    House1 = MPCSingleHomeDistributed(N, T, 'House1', params_single_peak['House1']),
+    House2 =  MPCSingleHomeDistributed(N, T, 'House2', params_single_peak['House2']),
+    peak = MPCSinglePeakDistributed(N, T, 'peak', params['peak'])
+    )
+    wrapper = DMPCWrapperSerial(N, T, mpcs, 0, dual_variables_length=N-1, step_size=0.1)
+    wrapper.run_full()  
+    wrapper.persist_results('data/runs/')
+    
+# if __name__ == '__main__':
+#     cmpc = MPCCentralizedSinglePeakConvex(N, T, 'cent', params_single_peak, N-1)
+#     wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
+#     wrapper.run_full()
+#     wrapper.persist_results('data/runs/')
+    
+# if __name__ == '__main__':
+#     mpcs = dict(
+#         House1 = MPCSingleHome(N, T, 'House1', params_single_peak['House1']),
+#         House2 =  MPCSingleHome(N, T, 'House2', params_single_peak['House2'])
+#         )
+#     wrapper = MPCWrapperSerial(N, T, mpcs)
+#     wrapper.run_full()
+#     wrapper.persist_results('data/runs/')
 
 # if __name__ == '__main__':
 #     proxGradSolver = ProximalGradientSolver(N, peak_weight_single)
@@ -178,22 +212,6 @@ for i in range(3,9):
 #                                         proximalGradientSolver=proxGradSolver)
 #     wrapper.run_full()  
 #     wrapper.persist_results('data/runs/')
-    
-if __name__ == '__main__':
-    cmpc = MPCCentralizedHomeSinglePeak(N, T, 'cent', params_8, N-1)
-    wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
-    wrapper.run_full()
-    wrapper.persist_results('data/runs/')
-    
-# if __name__ == '__main__':
-#     mpcs = dict(
-#         House1 = MPCSingleHome(N, T, 'House1', params['House1']),
-#         House2 =  MPCSingleHome(N, T, 'House2', params['House2'])
-#         )
-#     wrapper = MPCWrapperSerial(N, T, mpcs)
-#     wrapper.run_full()
-#     wrapper.persist_results('data/runs/')
-
 
 # if __name__ == '__main__':
 #     mpcs = {}

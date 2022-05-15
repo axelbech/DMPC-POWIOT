@@ -918,7 +918,7 @@ class MPCPeakStateDistributedQuadratic(MPCPeakStateDistributed):
         return J
 
 
-class MPCSinglePeakStateDistributed(MPCDistributed):
+class MPCSinglePeakDistributed(MPCDistributed):
     def get_decision_variables(self):
         return struct_symMX([entry('peak_state')])
     
@@ -931,6 +931,8 @@ class MPCSinglePeakStateDistributed(MPCDistributed):
     def get_cost_function(self):
         J = 0
         J += self.p['peak_weight_quad'] * self.w['peak_state']**2
+        for k in range(self.N-1):
+            J -= self.p['dual_variables',k] * self.w['peak_state']
         return J
             
     def get_constraint_functions(self):
@@ -939,6 +941,7 @@ class MPCSinglePeakStateDistributed(MPCDistributed):
     
     def get_initial_state(self):
         w0 = copy(self.w)(0)
+        w0['peak_state'] = self.params['initial_state']['peak_state']
         return w0
     
     def get_state_bounds(self):
@@ -957,7 +960,7 @@ class MPCSinglePeakStateDistributed(MPCDistributed):
         return traj_full
     
     def get_dual_update_contribution(self):
-        return -np.array(vertcat(*self.w_opt['peak_state'])).flatten()
+        return -np.array(self.w_opt['peak_state']).flatten()
     
     def update_trajectory(self):
         self.traj_full['peak_state'].append(
