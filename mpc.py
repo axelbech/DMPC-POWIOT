@@ -1915,8 +1915,8 @@ class MPCCentralizedHourly(MPCCentralized, MPCSingleHome):
             p_num[home,'COP'] = opt_params['COP']
         p_num['hourly_peak', 'hourly_weight_quad'] = \
             self.params['hourly_peak']['opt_params']['hourly_weight_quad']
-        p_num['hourly_peak']['accumulated_energy'] = 0
-        p_num['hourly_peak']['shift'] = 0
+        p_num['hourly_peak','accumulated_energy'] = 0
+        p_num['hourly_peak','shift'] = 0
         return p_num
     
     def get_initial_state(self):
@@ -2001,25 +2001,16 @@ class MPCCentralizedHourly(MPCCentralized, MPCSingleHome):
                 lbg.append(-inf)
                 ubg.append(0)
             
-        for k in range(self.N - 1):
-            power_sum = 0
-            for home in self.homes:
-                power_sum += self.w[home, 'P_hp', k]
-                power_sum += self.p[home, 'ext_power', k]
-            g.append(power_sum - self.w['peak_state']) # peak state must be greater than sum of power at k
-            lbg.append(-inf)
-            ubg.append(0)
-            
         for j in range(self.J):
             e_j = 0
             if j == 0:
-                e_j += self.p['hourly_peak']['accumulated_energy']
+                e_j += self.p['hourly_peak','accumulated_energy']
             for k in range(self.N-1):
-                k_mask = logic_and(12*j-self.p['hourly_peak']['shift'] <= k, \
-                    k < 12*(j+1)-self.p['hourly_peak']['shift'])
+                k_mask = logic_and(12*j-self.p['hourly_peak','shift'] <= k, \
+                    k < 12*(j+1)-self.p['hourly_peak','shift'])
                 for home in self.homes:
                     e_j += k_mask * \
-                (self.w[home, 'P_hp', k] + self.p[home, 'P_ext', k])
+                (self.w[home, 'P_hp', k] + self.p[home, 'ext_power', k])
             g.append(e_j - self.w['hourly_peak'])
             lbg.append(-inf)
             ubg.append(0)
@@ -2041,8 +2032,9 @@ class MPCCentralizedHourly(MPCCentralized, MPCSingleHome):
             self.w0[home,'wall_temp',-1]=self.w_opt[home,'wall_temp', -1]
             self.w0[home,'P_hp',:self.N-2]=self.w_opt[home,'P_hp',1:]
             self.w0[home,'P_hp',-1]=self.w_opt[home,'P_hp', -1]
-        
-           
+            self.p_num['hourly_peak','accumulated_energy'] += (
+                self.w_opt[home, 'P_hp', 0] + self.p_num[home, 'ext_power',0]
+            )
         
     def update_constraints(self):
         for home in self.homes:
@@ -2050,7 +2042,7 @@ class MPCCentralizedHourly(MPCCentralized, MPCSingleHome):
             self.ubw[home, 'wall_temp', 0] = self.w0[home, 'wall_temp', 0]
             self.lbw[home, 'room_temp', 0] = self.w0[home, 'room_temp', 0]
             self.ubw[home, 'room_temp', 0] = self.w0[home, 'room_temp', 0]
-            
+
     def update_parameters(self, t):
         for home in self.homes:
             opt_params = self.params[home]['opt_params']
@@ -2072,14 +2064,11 @@ class MPCCentralizedHourly(MPCCentralized, MPCSingleHome):
             self.p_num[home, 'ext_power', 0] = (
                 opt_params['ext_power_real'][t]
             )
-            self.p_num['hourly_peak']['accumulated_energy'] += (
-                self.w_opt[home, 'P_hp', 0]
-            )
         if not (t % 12):
-            self.p_num['hourly_peak']['shift'] = 0
-            self.p_num['hourly_peak']['accumulated_energy'] = 0
+            self.p_num['hourly_peak','shift'] = 0
+            self.p_num['hourly_peak','accumulated_energy'] = 0
         else:
-            self.p_num['hourly_peak']['shift'] += 1
+            self.p_num['hourly_peak','shift'] += 1
         return
 
 class ProximalGradientSolver():
@@ -2255,4 +2244,5 @@ class ProximalGradientSolver():
         """
         for key, value in kwargs.items():
             self.p_num[key] = list(value) 
+            
             

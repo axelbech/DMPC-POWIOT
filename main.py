@@ -16,6 +16,7 @@ from mpc import (
     MPCCentralizedHomePeakQuadratic, 
     MPCCentralizedHomeSinglePeak,
     MPCCentralizedSinglePeakConvex,
+    MPCCentralizedHourly,
     MPCPeakStateDistributed,
     MPCPeakStateDistributedQuadratic, 
     MPCSingleHome, 
@@ -34,7 +35,7 @@ from wrappers import (
     DMPCWrapperSerialProxGrad,
 )
 
-N = 288
+N = 100
 T = 288
 
 
@@ -106,7 +107,7 @@ params = {
             'outdoor_temperature': outdoor_temperature,
             'reference_temperature': list(ref_temp_fixed), # reference_temperature,
             'min_temperature': list(min_temp),
-            'spot_price': spot_price,
+            'spot_price': (T+N) * [100.0], # spot_price,
             'ext_power_real': pwr_1127, # ext_power_none,# ext_power_avg,# pwr_1127,
             'ext_power_avg': ext_power_avg # ext_power_none, # ext_power_avg
         },
@@ -129,7 +130,7 @@ params = {
             'outdoor_temperature': outdoor_temperature,
             'reference_temperature': list(ref_temp_fixed), #reference_temperature,
             'min_temperature': list(min_temp),
-            'spot_price': spot_price,
+            'spot_price': (T+N) * [100.0], # spot_price,
             'ext_power_real': pwr_1129, # ext_power_none,# ext_power_avg, # pwr_1129,
             'ext_power_avg': ext_power_avg,# ext_power_none# ext_power_avg
         },
@@ -172,19 +173,30 @@ for i in range(3,9):
     house = "House" + str(i)
     params_8[house] = copy.deepcopy(params_8['House1'])
     params_8[house]['opt_params']['ext_power_real'] = ext_pwr_list[i-1]
-
-
+    
+    
+hourly_weight_quad = 0.1 * 12 # 0.5 * 12 # peak_weight_quad_single * 12
+params_hourly = copy.copy(params)
+del params_hourly['peak']
+params_hourly['hourly_peak'] = {'opt_params': {'hourly_weight_quad': hourly_weight_quad,},
+        'initial_state': { 'hourly_peak': 0}}
 
 
 if __name__ == '__main__':
-    mpcs = dict(
-    House1 = MPCSingleHomeDistributed(N, T, 'House1', params_single_peak['House1']),
-    House2 =  MPCSingleHomeDistributed(N, T, 'House2', params_single_peak['House2']),
-    peak = MPCSinglePeakDistributed(N, T, 'peak', params['peak'])
-    )
-    wrapper = DMPCWrapperSerial(N, T, mpcs, 0, dual_variables_length=N-1, step_size=0.1)
-    wrapper.run_full()  
+    cmpc = MPCCentralizedHourly(N, T, 'cent', params_hourly, int(np.ceil(N/12)))
+    wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
+    wrapper.run_full()
     wrapper.persist_results('data/runs/')
+
+# if __name__ == '__main__':
+#     mpcs = dict(
+#     House1 = MPCSingleHomeDistributed(N, T, 'House1', params_single_peak['House1']),
+#     House2 =  MPCSingleHomeDistributed(N, T, 'House2', params_single_peak['House2']),
+#     peak = MPCSinglePeakDistributed(N, T, 'peak', params['peak'])
+#     )
+#     wrapper = DMPCWrapperSerial(N, T, mpcs, 0, dual_variables_length=N-1, step_size=0.1)
+#     wrapper.run_full()  
+#     wrapper.persist_results('data/runs/')
     
 # if __name__ == '__main__':
 #     cmpc = MPCCentralizedSinglePeakConvex(N, T, 'cent', params_single_peak, N-1)

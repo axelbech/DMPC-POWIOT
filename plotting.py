@@ -19,19 +19,21 @@ import pytz
 # dpath = r'data\runs\DMPCWrapper-N288T288-20220507-000814\\'
 # dcpath = r'data\runs\MPCWrapper-N288T288-20220506-233223\\'
 
-# cpath = r'data\runs\MPCWrapperSerial-N288T288-20220510-175856\\'
-# dpath = r'data\runs\DMPCWrapperSerialProxGrad-N288T288-20220510-184226\\'
-# dcpath = r'data\runs\MPCWrapperSerial-N288T288-20220510-180137\\'
+# cpath = r'data\runs\MPCWrapperSerial-N288T288-linPeakCent\\' # Linear single peak
+# dpath = r'data\runs\DMPCWrapperSerialProxGrad-N288T288-linPeakDist\\'
+# dcpath = r'data\runs\MPCWrapperSerial-N288T288-linPeakDecent\\'
 
-# cpath = r'data\runs\MPCWrapperSerial-N288T288-20220512-125018\\'
-# dpath = r'data\runs\MPCWrapperSerial-N288T288-20220512-125006\\'
-# dcpath = r'data\runs\MPCWrapperSerial-N288T288-20220512-125006\\'
-
-cpath = r'data\runs\MPCWrapperSerial-N288T288-quadPeakCent\\'
+cpath = r'data\runs\MPCWrapperSerial-N288T288-quadPeakCent\\' #Quadratic single peak
 dpath = r'data\runs\DMPCWrapperSerial-N288T288-quadPeakDist\\'
 dcpath = r'data\runs\MPCWrapperSerial-N288T288-quadPeakDecent\\'
 
-ccpath = r'data\runs\MPCWrapperSerial-N288T288-quadPeakCent\MPCCentralizedSinglePeakConvex-cent.json'
+# cpath = r'data\runs\MPCWrapperSerial-N288T288-quadPeakCent\\' # For testing hourly cost
+# cpath = r'data\runs\MPCWrapperSerial-N288T288-20220521-152238\\'
+# cpath = r'data\runs\MPCWrapperSerial-N288T288-20220516-140545\\'
+# dpath = r'data\runs\DMPCWrapperSerial-N288T288-quadPeakDist\\'
+# dcpath = r'data\runs\MPCWrapperSerial-N288T288-quadPeakDecent\\'
+
+ccpath = r'data\runs\MPCWrapperSerial-N288T288-quadPeakCent\MPCCentralizedSinglePeakConvex-cent.json' #quad cost
 ddpath = r'data\runs\DMPCWrapperSerial-N288T288-quadPeakDist\MPCSinglePeakDistributed-peak.json'
 
 def read_from_folder(folder_path):
@@ -54,7 +56,7 @@ def read_from_folder_centralized(folder_path):
             centralized_dict = json.load(file)
     names = list(centralized_dict['traj_full'].keys())
     for name in names:
-        if name == 'peak' or name == 'peak_state' or name == 'dv_traj':
+        if name == 'peak' or name == 'peak_state' or name == 'dv_traj' or name == 'hourly_peak':
             continue
         res[name] = dict(
             traj_full = centralized_dict['traj_full'][name],
@@ -131,6 +133,10 @@ def table_values(cpath, dpath, dcpath):
     P_hps_c = array([house['traj_full']['P_hp'][:T] for house in cmpc.values()])
     P_hps_d = array([house['traj_full']['P_hp'][:T] for house in dmpc.values()])
     P_hps_dc = array([house['traj_full']['P_hp'][:T] for house in dcmpc.values()])
+    cpt, dpt, dcpt = get_total_power(cpath, dpath, dcpath)
+    cph, dph, dcph = get_hourly_power(cpt, dpt, dcpt)
+    cphmax = cph.max(); dphmax = dph.max(); dcphmax = dcph.max()
+    print(f'Max Hourly Power Consumption [kWh]:\nCentralized: {cphmax}\nDistributed: {dphmax}\nDecentralized: {dcphmax}')
     temp_dev_c = np.sum(np.abs(room_temps_c-ref_temps))/12
     temp_dev_d = np.sum(np.abs(room_temps_d-ref_temps))/12
     temp_dev_dc = np.sum(np.abs(room_temps_dc-ref_temps))/12
@@ -171,15 +177,17 @@ def get_1h_time(length):
     time = [start_time + datetime.timedelta(hours=i*1) for i in range(length)]
     return time
     
-def plot_2_houses(cmpc_path, dmpc_path, dcmpc_path):
+def plot_2_houses(cmpc_path, dmpc_path, dcmpc_path, title=''):
     cmpc = read_from_folder_centralized(cmpc_path)
     dmpc = read_from_folder(dmpc_path)
     if dmpc.get('DMPCCoordinator', False):
         del dmpc['DMPCCoordinator']
     dcmpc = read_from_folder(dcmpc_path)
     cmpc, dmpc, dcmpc = tuple(map(retain_houses, [cmpc, dmpc, dcmpc]))
-    figr, axsr = plt.subplots(2, 1)
-    figp, axsp = plt.subplots(1)
+    figr, axsr = plt.subplots(2, 1, figsize=(12,8))
+    axsr[0].grid(); axsr[1].grid()
+    figp, axsp = plt.subplots(1, figsize=(12,4))
+    axsp.grid()
     axsr[0].set_ylabel('°C')
     axsp.set_ylabel('kW')
     pl = len(cmpc['House1']['traj_full']['P_hp'])
@@ -200,17 +208,18 @@ def plot_2_houses(cmpc_path, dmpc_path, dcmpc_path):
     axsp.plot(time, pwrc, label='Centralized')
     axsp.plot(time, pwrdc, label='Decentralized', alpha=0.7, linestyle='dashed')
     axsp.plot(time, pwrd, label='Distributed', alpha=0.7, linestyle='dashed')
-    axsp.set_title(house)
+    # axsp.set_title(house)
     axsp.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
     lines, labels = figr.axes[-1].get_legend_handles_labels()    
     figr.legend(lines, labels)
     lines, labels = figp.axes[-1].get_legend_handles_labels()    
     figp.legend(lines, labels)
-    figr.suptitle('Room Temperature', fontsize=16)
-    figp.suptitle('Heat Pump Power Use', fontsize=16)
+    figr.suptitle(title+'Room Temperature', fontsize=16)
+    figp.suptitle(title+'Total Heat Pump Power Use', fontsize=16)
+
     plt.show()
     
-def plot_2_peak(cmpc_path, dmpc_path):
+def plot_2_peak(cmpc_path, dmpc_path, title=''):
     with open(cmpc_path, 'r') as file:
         c = json.load(file)
     with open(dmpc_path, 'r') as file:
@@ -218,16 +227,16 @@ def plot_2_peak(cmpc_path, dmpc_path):
     cp = c['traj_full']['peak_state']
     dp = d['traj_full']['peak_state']
     time = get_5m_time(len(cp))
+    fig, ax = plt.subplots(1, figsize=(12,4))
     plt.plot(time, cp, label='centralized')
     plt.plot(time, dp, label='distributed',alpha=0.7)
-    ax = plt.gca()
-    ax.set_title('Peak state')
+    ax.set_title(title+'Peak State', fontsize=16)
     ax.legend()
+    ax.grid()
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-    plt.tight_layout()
     plt.show()
     
-def plot_power_hourly(c_path, d_path, dc_path):
+def get_total_power(c_path, d_path, dc_path):
     c = read_from_folder_centralized(c_path)
     # c = retain_houses(c)
     d = read_from_folder(d_path)
@@ -245,51 +254,44 @@ def plot_power_hourly(c_path, d_path, dc_path):
         dpt += d[house]['params']['opt_params']['ext_power_real'][:len(c[house]['traj_full']['P_hp'])]
         dcpt += dc[house]['traj_full']['P_hp']
         dcpt += dc[house]['params']['opt_params']['ext_power_real'][:len(c[house]['traj_full']['P_hp'])]
+    return cpt, dpt, dcpt
+    
+def plot_power_hourly(c_path, d_path, dc_path, title=''):
+    cpt, dpt, dcpt = get_total_power(c_path, d_path, dc_path)
     cp, dp, dcp = get_hourly_power(cpt, dpt, dcpt)
     time = get_1h_time(len(cp))
     plt.step(time, cp, label='centralized')
     plt.step(time, dcp, label='decentralized', alpha=0.7, linestyle='dashed')
-    plt.step(time, dp, label='distributed', alpha=0.7, linestyle='', marker='circle')
+    plt.step(time, dp, label='distributed', alpha=0.7, linestyle='dashed')
     plt.ylabel('kWh')
+    f = plt.gcf()
+    f.set_figheight(4)
+    f.set_figwidth(12)
     plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
     plt.legend()
     plt.grid()
-    plt.title('Hourly energy consumption between all houses')
+    plt.title(title+'Total Hourly Energy Consumption')
     plt.show()
 
-def plot_power_total(c_path, d_path, dc_path):
-    c = read_from_folder_centralized(c_path)
-    # c = retain_houses(c)
-    d = read_from_folder(d_path)
-    if d.get('DMPCCoordinator', False):
-        del d['DMPCCoordinator']
-    dc = read_from_folder(dc_path)
-    c, d, dc = tuple(map(retain_houses, [c, d, dc]))
-    cpt = np.zeros_like(np.array(c['House1']['traj_full']['P_hp']))
-    dpt = np.zeros_like(cpt)
-    dcpt = np.zeros_like(cpt)
-    for house in c:        
-        cpt += c[house]['traj_full']['P_hp']
-        cpt += c[house]['params']['opt_params']['ext_power_real'][:len(c[house]['traj_full']['P_hp'])]
-        dpt += d[house]['traj_full']['P_hp']
-        dpt += d[house]['params']['opt_params']['ext_power_real'][:len(c[house]['traj_full']['P_hp'])]
-        dcpt += dc[house]['traj_full']['P_hp']
-        dcpt += dc[house]['params']['opt_params']['ext_power_real'][:len(c[house]['traj_full']['P_hp'])]
-    # cp, dp, dcp = get_hourly_power(cpt, dpt, dcpt)
-    # time = get_1h_time(len(cp))
+def plot_power_total(c_path, d_path, dc_path, title=''):
+    cpt, dpt, dcpt = get_total_power(c_path, d_path, dc_path)
     time = get_5m_time(len(cpt))
+    f = plt.gcf()
+    f.set_figheight(4)
+    f.set_figwidth(12)
     plt.plot(time, cpt, label='centralized')
     plt.plot(time, dcpt, label='decentralized', alpha=0.7, linestyle='dashed')
     plt.plot(time, dpt, label='distributed',  alpha=0.7, linestyle='dashed')
-    plt.ylabel('kWh')
+    plt.ylabel('kW')
     plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
     plt.legend()
     plt.grid()
-    plt.title('Hourly energy consumption between all houses')
+    plt.title(title+'Total Power Consumption')
     plt.show()
-    
-# plot_2_houses(cpath, dpath, dcpath)
-# plot_power_hourly(cpath, dpath, dcpath)
-# plot_power_total(cpath, dpath, dcpath)
-# plot_2_peak(ccpath, ddpath)
+
+title = 'Quadratic Peak Cost: '
+plot_2_houses(cpath, dpath, dcpath, title)
+plot_power_hourly(cpath, dpath, dcpath, title)
+plot_power_total(cpath, dpath, dcpath, title)
 table_values(cpath, dpath, dcpath)
+# plot_2_peak(ccpath, ddpath,title)
