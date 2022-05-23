@@ -836,6 +836,103 @@ class MPCSingleHomeDistributed(MPCDistributed, MPCSingleHome):
         total_power = heat_pump_power + ext_power
         # print(self.name, self.p_num['dual_variables',0], total_power[:5])
         return total_power
+    
+
+class MPCSingleHomeHourlyDistributed(MPCDistributed, MPCSingleHome):
+    
+    def __init__(self, N: int, T: int, name: str, params: dict):
+        self.J = int(np.ceil(N / 12))
+        super().__init__(N, T, name, params)
+        
+    def get_parameters_structure(self):
+        return struct_symMX([
+                entry('energy_weight'),
+                entry('comfort_weight'),
+                entry('slack_min_weight'),
+                entry('rho_out'),
+                entry('rho_in'),
+                entry('COP'),
+                entry('outdoor_temperature', repeat=self.N),
+                entry('reference_temperature', repeat=self.N),
+                entry('min_temperature', repeat=self.N),
+                entry('spot_price', repeat=self.N-1),
+                entry('ext_power', repeat=self.N-1),
+                entry('dual_variables', repeat=self.J),
+                entry('accumulated_energy'),
+                entry('shift')
+            ])
+        
+    def get_numerical_parameters(self):
+        p_num =  super().get_numerical_parameters()
+        p_num['accumulated_energy'] = 0
+        p_num['shift'] = 0
+        return p_num
+    
+    def get_cost_function(self):
+        J = 0
+        for k in range(self.N-1): 
+            J += self.p['comfort_weight'] * \
+            (self.w['state', k+1, 'room_temp'] - self.p['reference_temperature',k+1])**2
+            J += self.p['slack_min_weight']*self.w['state',k+1,'slack_temp']**2
+            J += self.p['energy_weight'] * self.p['spot_price', k]\
+                * self.w['input', k, 'P_hp']
+            
+        for j in range(self.J):
+            e_j = 0
+            # if j == 0: # Does not change anything
+            #     e_j += self.p['accumulated_energy']
+            for k in range(self.N-1):
+                k_mask = logic_and(12*j-self.p['shift'] <= k, \
+                    k < 12*(j+1)-self.p['shift'])
+                
+                e_j += k_mask * \
+            (self.w['input', k, 'P_hp'] + self.p['ext_power', k])
+            
+            J += self.p['dual_variables', j] * e_j # Dualized cost 
+        
+        return J
+    
+    def get_dual_update_contribution(self):
+        # ejs = []
+        # for j in range(self.J):
+        #     e_j = 0
+        #     if j == 0:
+        #         e_j += self.p_num['accumulated_energy']
+        #     for k in range(self.N-1):
+        #         k_mask = logic_and(12*j-self.p_num['shift'] <= k, \
+        #             k < 12*(j+1)-self.p_num['shift'])
+                
+        #         e_j += k_mask * \
+        #     (self.w_opt['input', k, 'P_hp'] + self.p_num['ext_power', k])
+        #     ejs.append(e_j)
+        # ejs = np.array(ejs).flatten()
+        pwr_int = np.array(self.w_opt['input', :, 'P_hp']).flatten()
+        pwr_ext = np.array(self.p_num['ext_power', :]).flatten()
+        pwr = pwr_int + pwr_ext
+        shift = int(self.p_num['shift'])
+        # mask = np.roll(np.repeat(np.eye(self.J), repeats=12, axis=1), 
+        #                shift=-int(self.p_num['shift']), axis=1)
+        # ejs = mask[:, :len(pwr)] @ pwr
+        
+        mask = np.hstack((np.repeat(np.eye(self.J), repeats=12, axis=1),
+                          np.zeros((self.J,12))))
+        ejs = mask[:, shift:len(pwr)+shift] @ pwr
+        ejs[0] += self.p_num['accumulated_energy']
+        return ejs
+    
+    def update_initial_state(self):
+        super().update_initial_state()
+        self.p_num['accumulated_energy'] += (
+                self.w_opt['input', 0, 'P_hp'] + self.p_num['ext_power', 0]
+            )
+        
+    def update_parameters(self, t):
+        super().update_parameters(t)
+        if not (t % 12):
+            self.p_num['shift'] = 0
+            self.p_num['accumulated_energy'] = 0
+        else:
+            self.p_num['shift'] += 1
 
 
 class MPCPeakStateDistributed(MPCDistributed):
@@ -965,6 +1062,60 @@ class MPCSinglePeakDistributed(MPCDistributed):
     def update_trajectory(self):
         self.traj_full['peak_state'].append(
             round(self.w_opt['peak_state'].__float__(), 6)
+            )
+
+
+class MPCHourlyPeakDistributed(MPCDistributed):
+    def __init__(self, N: int, T: int, name: str, params: dict):
+        self.J = int(np.ceil(N / 12))
+        super().__init__(N, T, name, params)
+    
+    def get_decision_variables(self):
+        return struct_symMX([entry('hourly_peak')])
+    
+    def get_parameters_structure(self):
+        return struct_symMX([
+            entry('hourly_weight_quad'), 
+            entry('dual_variables', repeat=self.J),
+            ])
+
+    def get_cost_function(self):
+        J = 0
+        J += self.p['hourly_weight_quad'] * self.w['hourly_peak']**2
+        for j in range(self.J):
+            J -= self.p['dual_variables',j] * self.w['hourly_peak']
+        return J
+            
+    def get_constraint_functions(self):
+        g = []; lbg = []; ubg = []
+        return g, lbg, ubg
+    
+    def get_initial_state(self):
+        w0 = copy(self.w)(0)
+        w0['hourly_peak'] = self.params['initial_state']['hourly_peak']
+        return w0
+    
+    def get_state_bounds(self):
+        lbw = copy(self.w)(-inf)
+        ubw = copy(self.w)(inf)
+        return lbw, ubw
+    
+    def get_numerical_parameters(self):
+        p_num = self.p(0)
+        p_num['hourly_weight_quad'] = self.params['opt_params']['hourly_weight_quad']
+        return p_num
+    
+    def get_trajectory_structure(self):
+        traj_full = {}
+        traj_full['hourly_peak'] = []
+        return traj_full
+    
+    def get_dual_update_contribution(self):
+        return -np.array(self.w_opt['hourly_peak']).flatten()
+    
+    def update_trajectory(self):
+        self.traj_full['hourly_peak'].append(
+            round(self.w_opt['hourly_peak'].__float__(), 6)
             )
 
 
@@ -2071,6 +2222,7 @@ class MPCCentralizedHourly(MPCCentralized, MPCSingleHome):
             self.p_num['hourly_peak','shift'] += 1
         return
 
+
 class ProximalGradientSolver():
     """Proximal Gradient solver for projecting  varaible onto a feasible
     plane
@@ -2244,5 +2396,3 @@ class ProximalGradientSolver():
         """
         for key, value in kwargs.items():
             self.p_num[key] = list(value) 
-            
-            

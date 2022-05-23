@@ -19,10 +19,12 @@ from mpc import (
     MPCCentralizedHourly,
     MPCPeakStateDistributed,
     MPCPeakStateDistributedQuadratic, 
+    MPCHourlyPeakDistributed,
     MPCSingleHome, 
     MPCSingleHomeDistributed, 
     MPCSingleHomePeak,
     MPCSingleHomePeakDistributed,
+    MPCSingleHomeHourlyDistributed,
     MPCSinglePeakDistributed,
     ProximalGradientSolver,
 )
@@ -35,7 +37,7 @@ from wrappers import (
     DMPCWrapperSerialProxGrad,
 )
 
-N = 100
+N = 288
 T = 288
 
 
@@ -183,10 +185,20 @@ params_hourly['hourly_peak'] = {'opt_params': {'hourly_weight_quad': hourly_weig
 
 
 if __name__ == '__main__':
-    cmpc = MPCCentralizedHourly(N, T, 'cent', params_hourly, int(np.ceil(N/12)))
-    wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
-    wrapper.run_full()
+    mpcs = dict(
+    House1 = MPCSingleHomeHourlyDistributed(N, T, 'House1', params_hourly['House1']),
+    House2 =  MPCSingleHomeHourlyDistributed(N, T, 'House2', params_hourly['House2']),
+    hourly_peak = MPCHourlyPeakDistributed(N, T, 'hourly_peak', params_hourly['hourly_peak'])
+    )
+    wrapper = DMPCWrapperSerial(N, T, mpcs, 0, dual_variables_length=int(np.ceil(N/12)), step_size=0.15)
+    wrapper.run_full()  
     wrapper.persist_results('data/runs/')
+
+# if __name__ == '__main__':    
+#     cmpc = MPCCentralizedHourly(N, T, 'cent', params_hourly, int(np.ceil(N/12)))
+#     wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
+#     wrapper.run_full()
+#     wrapper.persist_results('data/runs/')
 
 # if __name__ == '__main__':
 #     mpcs = dict(
