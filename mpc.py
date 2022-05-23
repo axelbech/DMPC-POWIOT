@@ -253,7 +253,7 @@ class MPCDistributed(MPC):
                 private_coordination['dual_update_contribution'] = \
                     self.get_dual_update_contribution()
                 private_coordination['f_opt'] = f_opt
-                print(f'{self.name}: time step {t}, pid = {os.getpid()}, w_opt = {self.w_opt.master[0]}')
+                # print(f'{self.name}: time step {t}, pid = {os.getpid()}, w_opt = {self.w_opt.master[0]}')
             
             self.update_trajectory()
             

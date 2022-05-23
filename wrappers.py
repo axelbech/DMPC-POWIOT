@@ -230,7 +230,7 @@ class DMPCCoordinator():
         
         self.f_sum_last = 1e6
         f_tol = 1e-3 * self.N
-        dv_tol = 1e-3
+        dv_tol = 1e-4 # 1e-3
         
         t = 0
         public_coordination['t'] = t
@@ -248,7 +248,7 @@ class DMPCCoordinator():
                 while True:
                     is_all_controllers_ready = True
                     for controller in self.controllers:
-                        if not private_coordination[controller]['f_opt']:
+                        if private_coordination[controller]['f_opt'] is None: # not private_coordination[controller]['f_opt']:
                             is_all_controllers_ready = False
                     if is_all_controllers_ready:
                         break
@@ -388,7 +388,7 @@ class DMPCWrapperSerial(MPCWrapperSerial):
         mpcs: dict,
         dual_update_constant: float,
         dual_variables_length: int,
-        step_size: int = 1,
+        step_size: float = 1,
         ):
         
         super().__init__(N, T, mpcs)
@@ -406,32 +406,6 @@ class DMPCWrapperSerial(MPCWrapperSerial):
         Returns:
             ndarray: dual variables
         """
-        # return np.array([
-        #         3.5442829144114065,
-        #         1.7799109907696706,
-        #         0.3502094945876326,
-        #         1.3385309302451428e-09,
-        #         5.97447712274911e-10,
-        #         5.235950224957933e-10,
-        #         1.0585876947022774e-09,
-        #         0.14256525407300424,
-        #         0.1632664438015937,
-        #         5.069383575618881e-09,
-        #         1.0880521575786013e-09,
-        #         1.3104418696288889e-09,
-        #         3.914146727984567e-09,
-        #         2.2894816839472297e-09,
-        #         1.0380842996004485e-09,
-        #         1.512608158931876e-09,
-        #         0.2881643408033377,
-        #         1.8247896150781966,
-        #         4.705821942787352,
-        #         5.826163870228768,
-        #         5.472897116133969,
-        #         4.087581705547132,
-        #         1.9257240794502817,
-        #         1.2005441593324326e-08
-        #     ])
         return np.zeros(self.dual_variables_length)
     
     def get_dual_variables_trajectory(self):
@@ -484,7 +458,7 @@ class DMPCWrapperSerial(MPCWrapperSerial):
         maxIt = 60
         
         f_tol = 1e-3 * self.N
-        dv_tol = 2e-5
+        dv_tol = 1e-4
         
         while it < maxIt:
             # w0 = list(self.mpcs.values())[0].w0.master[0]
@@ -501,7 +475,6 @@ class DMPCWrapperSerial(MPCWrapperSerial):
                 
                 mpc.set_optimal_state(mpc.w(w_opt))
                 # mpc.set_initial_state(mpc.w(w_opt))
-                # print(mpc.name, ' peak0 = ', mpc.w_opt['peak_state',1])
                 dual_updates += mpc.get_dual_update_contribution()
                 
             dual_updates += self.dual_update_constant
@@ -542,7 +515,7 @@ class DMPCWrapperSerial(MPCWrapperSerial):
             
             self.update_dual_variables_trajectory(t)
             
-            # self.iterate_dual_variables()
+            self.iterate_dual_variables()
             
             self.update_mpc_state_trajectories()
             
@@ -557,8 +530,10 @@ class DMPCWrapperSerialProxGrad(DMPCWrapperSerial):
         T: int, 
         mpcs: dict,
         dual_update_constant: float, 
-        dual_variables_length: int, proximalGradientSolver):
-        super().__init__(N, T, mpcs, dual_update_constant, dual_variables_length)
+        dual_variables_length: int, 
+        step_size: float,
+        proximalGradientSolver):
+        super().__init__(N, T, mpcs, dual_update_constant, dual_variables_length, step_size)
         
         self.proximalGradientSolver = proximalGradientSolver
     
