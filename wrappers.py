@@ -209,6 +209,12 @@ class DMPCCoordinator():
         # self.dual_variables_traj[t, t:t+self.dual_variables_length] = self.dual_variables
         self.dual_variables_traj.append(self.dual_variables.tolist())
 
+    def project_dual_variables(self):
+        """Project the computed dual variable onto its feasible plane. To be 
+        used in the dual decomposition algorithm
+        """
+        self.dual_variables[self.dual_variables < 0] = 0
+
     def run_full(
         self,
         return_dict: dict,
@@ -265,7 +271,8 @@ class DMPCCoordinator():
                 dual_update_step_size = self.step_size / np.sqrt(1+it) # 0.15 # 2 / np.sqrt(1+it) 
                 dual_updates *= dual_update_step_size
                 self.dual_variables += dual_updates
-                self.dual_variables[self.dual_variables < 0] = 0
+                self.project_dual_variables()
+                # self.dual_variables[self.dual_variables < 0] = 0
                 
                 public_coordination['dual_variables'] = self.dual_variables
                 
@@ -275,8 +282,8 @@ class DMPCCoordinator():
                 print(
                 f'dual decomp iteration {it} , time step {t}, '
                 f'f_diff = {f_diff.flatten()} '
-                f'dual diff = {round(dv_diff,4)} '
-                f'dv0 = {round(self.dual_variables[0],4)} '
+                f'dual diff = {round(dv_diff,5)} '
+                f'dv0 = {round(self.dual_variables[0],5)} '
                 )
                 
                 if f_diff < f_tol and dv_diff < dv_tol:
@@ -296,6 +303,27 @@ class DMPCCoordinator():
             
         return_dict['dv_traj'] = self.dual_variables_traj #.tolist()
             
+class DMPCCoordinatorProxGrad(DMPCCoordinator):
+
+    def __init__(
+        self, 
+        N: int,
+        T: int,
+        controllers: list, 
+        dual_update_constant: float,
+        dual_variables_length: int,
+        step_size,
+        proximalGradientSolver):
+        super().__init__(N, T, controllers, dual_update_constant, dual_variables_length, step_size)
+
+        self.proximalGradientSolver = proximalGradientSolver
+
+    def project_dual_variables(self):
+        self.proximalGradientSolver.update_parameters_generic(
+            mu_plus = self.dual_variables
+        )
+        dual_variables = self.proximalGradientSolver.solve_optimization()
+        self.dual_variables = np.array(dual_variables).flatten()
 
 class MPCWrapperSerial():
     def __init__(
