@@ -23,10 +23,14 @@ import pytz
 # dpath = r'data\runs\DMPCWrapperSerialProxGrad-N288T288-linPeakDist\\'
 # dcpath = r'data\runs\MPCWrapperSerial-N288T288-linPeakDecent\\'
 
-cpath = r'data\runs\MPCWrapperSerial-quadPeakCent2H\\' #Quadratic single peak
-dpath = r'data\runs\DMPCWrapperSerial-quadPeakDist2H\\'
-dcpath = r'data\runs\MPCWrapperSerial-quadPeakDecent2H\\'
+# cpath = r'data\runs\MPCWrapperSerial-quadPeakCent2H\\' #Quadratic single peak
+# dpath = r'data\runs\DMPCWrapperSerial-quadPeakDist2H\\'
+# dcpath = r'data\runs\MPCWrapperSerial-quadPeakDecent2H\\'
 
+
+cpath = r'data\runs\MPCWrapperSerial-quadPeakCent8H\\' #Quadratic single peak 8H
+dpath = r'data\runs\DMPCWrapper-quadPeakDist8H\\'
+dcpath = r'data\runs\MPCWrapper-decent8H\\'
 
 
 ccpath = r'data\runs\MPCWrapperSerial-N288T288-quadPeakCent\MPCCentralizedSinglePeakConvex-cent.json' #quad cost
@@ -288,6 +292,6 @@ def plot_power_total(c_path, d_path, dc_path, title=''):
 title = 'Quadratic Peak Cost: '
 # plot_2_houses(cpath, dpath, dcpath, title)
 plot_power_hourly(cpath, dpath, dcpath, title)
-# plot_power_total(cpath, dpath, dcpath, title)
-# table_values(cpath, dpath, dcpath)
+plot_power_total(cpath, dpath, dcpath, title)
+table_values(cpath, dpath, dcpath)
 # plot_2_peak(ccpath, ddpath,title)

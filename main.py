@@ -110,7 +110,7 @@ params = {
             'outdoor_temperature': outdoor_temperature,
             'reference_temperature': list(ref_temp_fixed), # reference_temperature,
             'min_temperature': list(min_temp),
-            'spot_price': (T+N) * [100.0], # spot_price,
+            'spot_price': spot_price,
             'ext_power_real': pwr_1127, # ext_power_none,# ext_power_avg,# pwr_1127,
             'ext_power_avg': ext_power_avg # ext_power_none, # ext_power_avg
         },
@@ -133,7 +133,7 @@ params = {
             'outdoor_temperature': outdoor_temperature,
             'reference_temperature': list(ref_temp_fixed), #reference_temperature,
             'min_temperature': list(min_temp),
-            'spot_price': (T+N) * [100.0], # spot_price,
+            'spot_price': spot_price,
             'ext_power_real': pwr_1129, # ext_power_none,# ext_power_avg, # pwr_1129,
             'ext_power_avg': ext_power_avg,# ext_power_none# ext_power_avg
         },
