@@ -28,8 +28,16 @@ import pytz
 # dcpath = r'data\runs\MPCWrapperSerial-quadPeakDecent2H\\'
 
 
-cpath = r'data\runs\MPCWrapperSerial-quadPeakCent8H\\' #Quadratic single peak 8H
-dpath = r'data\runs\DMPCWrapper-quadPeakDist8H\\'
+# cpath = r'data\runs\MPCWrapperSerial-quadPeakCent8H\\' #Quadratic single peak 8H
+# dpath = r'data\runs\DMPCWrapper-quadPeakDist8H\\'
+# dcpath = r'data\runs\MPCWrapper-decent8H\\'
+
+# cpath = r'data\runs\quadPeakCent8H\\' #Quadratic single peak 8H
+# dpath = r'data\runs\quadPeakDist8H\\'
+# dcpath = r'data\runs\MPCWrapper-decent8H\\'
+
+cpath = r'data\runs\linPeakCent8H\\' #Linear single peak 8H
+dpath = r'data\runs\linPeakDist8H\\'
 dcpath = r'data\runs\MPCWrapper-decent8H\\'
 
 
@@ -137,6 +145,8 @@ def table_values(cpath, dpath, dcpath):
     cph, dph, dcph = get_hourly_power(cpt, dpt, dcpt)
     cphmax = cph.max(); dphmax = dph.max(); dcphmax = dcph.max()
     print(f'Max Hourly Power Consumption [kWh]:\nCentralized: {cphmax}\nDistributed: {dphmax}\nDecentralized: {dcphmax}')
+    cpmax = cpt.max(); dpmax = dpt.max(); dcpmax = dcpt.max()
+    print(f'Max Power Consumption [kW]:\nCentralized: {cpmax}\nDistributed: {dpmax}\nDecentralized: {dcpmax}')
     temp_dev_c = np.sum(np.abs(room_temps_c-ref_temps))/12
     temp_dev_d = np.sum(np.abs(room_temps_d-ref_temps))/12
     temp_dev_dc = np.sum(np.abs(room_temps_dc-ref_temps))/12
@@ -289,7 +299,7 @@ def plot_power_total(c_path, d_path, dc_path, title=''):
     plt.title(title+'Total Power Consumption')
     plt.show()
 
-title = 'Quadratic Peak Cost: '
+title = 'Lienar Peak Cost, 8 Houses: '
 # plot_2_houses(cpath, dpath, dcpath, title)
 plot_power_hourly(cpath, dpath, dcpath, title)
 plot_power_total(cpath, dpath, dcpath, title)

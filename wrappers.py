@@ -486,7 +486,7 @@ class DMPCWrapperSerial(MPCWrapperSerial):
         maxIt = 60
         
         f_tol = 1e-3 * self.N
-        dv_tol = 1e-4
+        dv_tol = 1e-3
         
         while it < maxIt:
             # w0 = list(self.mpcs.values())[0].w0.master[0]
@@ -543,7 +543,7 @@ class DMPCWrapperSerial(MPCWrapperSerial):
             
             self.update_dual_variables_trajectory(t)
             
-            self.iterate_dual_variables()
+            # self.iterate_dual_variables()
             
             self.update_mpc_state_trajectories()
             
