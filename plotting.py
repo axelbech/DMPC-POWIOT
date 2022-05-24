@@ -27,6 +27,10 @@ import pytz
 # dpath = r'data\runs\DMPCWrapperSerial-quadPeakDist2H\\'
 # dcpath = r'data\runs\MPCWrapperSerial-quadPeakDecent2H\\'
 
+cpath = r'data\runs\hourlyPeakCent2H\\' #hourly peak 2H
+dpath = r'data\runs\hourlyPeakDist2H\\'
+dcpath = r'data\runs\MPCWrapperSerial-quadPeakDecent2H\\'
+
 
 # cpath = r'data\runs\MPCWrapperSerial-quadPeakCent8H\\' #Quadratic single peak 8H
 # dpath = r'data\runs\DMPCWrapper-quadPeakDist8H\\'
@@ -36,9 +40,9 @@ import pytz
 # dpath = r'data\runs\quadPeakDist8H\\'
 # dcpath = r'data\runs\MPCWrapper-decent8H\\'
 
-cpath = r'data\runs\linPeakCent8H\\' #Linear single peak 8H
-dpath = r'data\runs\linPeakDist8H\\'
-dcpath = r'data\runs\MPCWrapper-decent8H\\'
+# cpath = r'data\runs\linPeakCent8H\\' #Linear single peak 8H
+# dpath = r'data\runs\linPeakDist8H\\'
+# dcpath = r'data\runs\MPCWrapper-decent8H\\'
 
 
 ccpath = r'data\runs\MPCWrapperSerial-N288T288-quadPeakCent\MPCCentralizedSinglePeakConvex-cent.json' #quad cost
@@ -299,9 +303,9 @@ def plot_power_total(c_path, d_path, dc_path, title=''):
     plt.title(title+'Total Power Consumption')
     plt.show()
 
-title = 'Lienar Peak Cost, 8 Houses: '
+title = 'Hourly Peak Cost, 2 Houses: '
 # plot_2_houses(cpath, dpath, dcpath, title)
-plot_power_hourly(cpath, dpath, dcpath, title)
-plot_power_total(cpath, dpath, dcpath, title)
+# plot_power_hourly(cpath, dpath, dcpath, title)
+# plot_power_total(cpath, dpath, dcpath, title)
 table_values(cpath, dpath, dcpath)
 # plot_2_peak(ccpath, ddpath,title)
