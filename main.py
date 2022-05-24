@@ -184,6 +184,11 @@ del params_hourly['peak']
 params_hourly['hourly_peak'] = {'opt_params': {'hourly_weight_quad': hourly_weight_quad,},
         'initial_state': { 'hourly_peak': 0}}
 
+params_hourly_8 = copy.copy(params_8)
+del params_hourly_8['peak']
+params_hourly_8['hourly_peak'] = {'opt_params': {'hourly_weight_quad': hourly_weight_quad,},
+        'initial_state': { 'hourly_peak': 0}}
+
 
 # if __name__ == '__main__':    # FOR RUNNING THE HOURLY PEAK COST, 2 HOUSES
 #     mpcs = dict(
@@ -248,7 +253,7 @@ params_hourly['hourly_peak'] = {'opt_params': {'hourly_weight_quad': hourly_weig
 
 #################### 8 houses #######################
 
-# if __name__ == '__main__':    # QUAD SINGLE PEAK
+# if __name__ == '__main__':    # QUAD SINGLE PEAK 8H
 #     cmpc = MPCCentralizedSinglePeakConvex(N, T, 'cent', params_8, N-1)
 #     wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
 #     wrapper.run_full()
@@ -265,26 +270,43 @@ params_hourly['hourly_peak'] = {'opt_params': {'hourly_weight_quad': hourly_weig
 #     wrapper.run_full()
 #     wrapper.persist_results('data/runs/')
 
-# if __name__ == '__main__':    # LINEAR PROJECTED SINGLE PEAK
+# if __name__ == '__main__':    # LINEAR PROJECTED SINGLE PEAK 8H
 #     cmpc = MPCCentralizedHomeSinglePeak(N, T, 'cent', params_8, N-1)
 #     wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
 #     wrapper.run_full()
 #     wrapper.persist_results('data/runs/')
     
+# if __name__ == '__main__':
+#     mpcs = {}
+#     for i in range(1,9):
+#         mpcname = 'House' + str(i)
+#         mpcs[mpcname] = MPCSingleHomeDistributed(N, T, mpcname, params_8[mpcname])
+#     proxGradSolver = ProximalGradientSolver(N, peak_weight_single)
+#     coordinator = DMPCCoordinatorProxGrad(N, T, [ctrl for ctrl in mpcs],
+#      dual_update_constant=0, dual_variables_length=N-1, step_size=0.1,
+#      proximalGradientSolver=proxGradSolver)
+#     wrapper = DMPCWrapper(N, T, [ctrl for ctrl in mpcs.values()],coordinator, dual_variables_length=N-1)
+#     wrapper.run_full()
+#     wrapper.persist_results('data/runs/')
+
+# if __name__ == '__main__':    # HOURLY PEAK COST 8H
+#     cmpc = MPCCentralizedHourly(N, T, 'cent', params_hourly_8, int(np.ceil(N/12)))
+#     wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
+#     wrapper.run_full()
+#     wrapper.persist_results('data/runs/')
+
 if __name__ == '__main__':
     mpcs = {}
     for i in range(1,9):
         mpcname = 'House' + str(i)
-        mpcs[mpcname] = MPCSingleHomeDistributed(N, T, mpcname, params_8[mpcname])
-    proxGradSolver = ProximalGradientSolver(N, peak_weight_single)
-    coordinator = DMPCCoordinatorProxGrad(N, T, [ctrl for ctrl in mpcs],
-     dual_update_constant=0, dual_variables_length=N-1, step_size=0.1,
-     proximalGradientSolver=proxGradSolver)
-    wrapper = DMPCWrapper(N, T, [ctrl for ctrl in mpcs.values()],coordinator, dual_variables_length=N-1)
+        mpcs[mpcname] = MPCSingleHomeHourlyDistributed(N, T, mpcname, params_hourly_8[mpcname])
+    mpcs['hourly_peak'] = MPCHourlyPeakDistributed(N, T, 'hourly_peak', params_hourly_8['hourly_peak'])
+    coordinator = DMPCCoordinator(N, T, [ctrl for ctrl in mpcs], dual_update_constant=0, dual_variables_length=int(np.ceil(N/12)), step_size=0.15)
+    wrapper = DMPCWrapper(N, T, [ctrl for ctrl in mpcs.values()],coordinator, dual_variables_length=int(np.ceil(N/12)))
     wrapper.run_full()
     wrapper.persist_results('data/runs/')
 
-# if __name__ == '__main__':
+# if __name__ == '__main__': #  DECENTRALIZED APPROACH, 8H
 #     mpcs = {}
 #     for i in range(1,9):
 #         mpcname = 'House' + str(i)

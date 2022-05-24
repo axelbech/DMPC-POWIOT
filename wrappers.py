@@ -235,8 +235,8 @@ class DMPCCoordinator():
         maxIt = 30
         
         self.f_sum_last = 1e6
-        f_tol = 1e-3 * self.N
-        dv_tol = 1e-4 # 1e-3
+        f_tol = 5e-2 * self.N # 1e-3 * self.N
+        dv_tol = 5e-2 # 1e-4 # 1e-3
         
         t = 0
         public_coordination['t'] = t
@@ -292,7 +292,7 @@ class DMPCCoordinator():
                 it += 1
                 
             self.update_dual_variables_trajectory(t)
-            self.iterate_dual_variables()
+            # self.iterate_dual_variables()
             public_coordination['dual_variables'] = self.dual_variables
             
             t += 1
