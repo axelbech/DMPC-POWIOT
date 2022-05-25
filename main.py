@@ -223,18 +223,18 @@ params_hourly_8['hourly_peak'] = {'opt_params': {'hourly_weight_quad': hourly_we
 #     wrapper.persist_results('data/runs/')
     
 
-# if __name__ == '__main__':    # FOR RUNNING THE LINEAR PEAK COST, 2 HOUSES
-#     proxGradSolver = ProximalGradientSolver(N, peak_weight_single)
-#     mpcs = dict(
-#     House1 = MPCSingleHomeDistributed(N, T, 'House1', params['House1']),
-#     House2 =  MPCSingleHomeDistributed(N, T, 'House2', params['House2'])
-#     )
-#     wrapper = DMPCWrapperSerialProxGrad(N, T, mpcs, -max_total_power, 
-#                                         dual_variables_length=N-1,
-#                                         step_size = 0.5,
-#                                         proximalGradientSolver=proxGradSolver)
-#     wrapper.run_full()  
-#     wrapper.persist_results('data/runs/')
+if __name__ == '__main__':    # FOR RUNNING THE LINEAR PEAK COST, 2 HOUSES
+    proxGradSolver = ProximalGradientSolver(N, peak_weight_single)
+    mpcs = dict(
+    House1 = MPCSingleHomeDistributed(N, T, 'House1', params['House1']),
+    House2 =  MPCSingleHomeDistributed(N, T, 'House2', params['House2'])
+    )
+    wrapper = DMPCWrapperSerialProxGrad(N, T, mpcs, 0, 
+                                        dual_variables_length=N-1,
+                                        step_size = 0.5,
+                                        proximalGradientSolver=proxGradSolver)
+    wrapper.run_full()  
+    wrapper.persist_results('data/runs/')
 
 # if __name__ == '__main__':    
 #     cmpc = MPCCentralizedHomeSinglePeak(N, T, 'cent', params_single_peak, N-1)
@@ -295,16 +295,16 @@ params_hourly_8['hourly_peak'] = {'opt_params': {'hourly_weight_quad': hourly_we
 #     wrapper.run_full()
 #     wrapper.persist_results('data/runs/')
 
-if __name__ == '__main__':
-    mpcs = {}
-    for i in range(1,9):
-        mpcname = 'House' + str(i)
-        mpcs[mpcname] = MPCSingleHomeHourlyDistributed(N, T, mpcname, params_hourly_8[mpcname])
-    mpcs['hourly_peak'] = MPCHourlyPeakDistributed(N, T, 'hourly_peak', params_hourly_8['hourly_peak'])
-    coordinator = DMPCCoordinator(N, T, [ctrl for ctrl in mpcs], dual_update_constant=0, dual_variables_length=int(np.ceil(N/12)), step_size=0.15)
-    wrapper = DMPCWrapper(N, T, [ctrl for ctrl in mpcs.values()],coordinator, dual_variables_length=int(np.ceil(N/12)))
-    wrapper.run_full()
-    wrapper.persist_results('data/runs/')
+# if __name__ == '__main__':
+#     mpcs = {}
+#     for i in range(1,9):
+#         mpcname = 'House' + str(i)
+#         mpcs[mpcname] = MPCSingleHomeHourlyDistributed(N, T, mpcname, params_hourly_8[mpcname])
+#     mpcs['hourly_peak'] = MPCHourlyPeakDistributed(N, T, 'hourly_peak', params_hourly_8['hourly_peak'])
+#     coordinator = DMPCCoordinator(N, T, [ctrl for ctrl in mpcs], dual_update_constant=0, dual_variables_length=int(np.ceil(N/12)), step_size=0.15)
+#     wrapper = DMPCWrapper(N, T, [ctrl for ctrl in mpcs.values()],coordinator, dual_variables_length=int(np.ceil(N/12)))
+#     wrapper.run_full()
+#     wrapper.persist_results('data/runs/')
 
 # if __name__ == '__main__': #  DECENTRALIZED APPROACH, 8H
 #     mpcs = {}

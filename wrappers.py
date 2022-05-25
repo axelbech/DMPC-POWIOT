@@ -303,6 +303,7 @@ class DMPCCoordinator():
             
         return_dict['dv_traj'] = self.dual_variables_traj #.tolist()
             
+ 
 class DMPCCoordinatorProxGrad(DMPCCoordinator):
 
     def __init__(
@@ -324,6 +325,7 @@ class DMPCCoordinatorProxGrad(DMPCCoordinator):
         )
         dual_variables = self.proximalGradientSolver.solve_optimization()
         self.dual_variables = np.array(dual_variables).flatten()
+
 
 class MPCWrapperSerial():
     def __init__(
@@ -543,7 +545,7 @@ class DMPCWrapperSerial(MPCWrapperSerial):
             
             self.update_dual_variables_trajectory(t)
             
-            # self.iterate_dual_variables()
+            self.iterate_dual_variables()
             
             self.update_mpc_state_trajectories()
             

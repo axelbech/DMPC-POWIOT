@@ -11,21 +11,15 @@ import pytz
 
 
 
-# cpath = r'data\runs\MPCWrapper-N288T288-20220504-123908\\' # Old values
-# dpath = r'data\runs\DMPCWrapper-N288T288-20220504-125642\\'
-# dcpath = r'data\runs\MPCWrapper-N288T288-20220504-114723\\'
 
-# cpath = r'data\runs\MPCWrapper-N288T288-20220506-233032\\' # Recent full run, no good hehe
-# dpath = r'data\runs\DMPCWrapper-N288T288-20220507-000814\\'
-# dcpath = r'data\runs\MPCWrapper-N288T288-20220506-233223\\'
 
-# cpath = r'data\runs\MPCWrapperSerial-N288T288-linPeakCent\\' # Linear single peak
-# dpath = r'data\runs\DMPCWrapperSerialProxGrad-N288T288-linPeakDist\\'
-# dcpath = r'data\runs\MPCWrapperSerial-N288T288-linPeakDecent\\'
+cpath = r'data\runs\linPeakCent2H\\' # Linear peak 2H
+dpath = r'data\runs\linPeakDist2H\\'
+dcpath = r'data\runs\decent2H\\'
 
-# cpath = r'data\runs\MPCWrapperSerial-quadPeakCent2H\\' #Quadratic single peak
-# dpath = r'data\runs\DMPCWrapperSerial-quadPeakDist2H\\'
-# dcpath = r'data\runs\MPCWrapperSerial-quadPeakDecent2H\\'
+# cpath = r'data\runs\quadPeakCent2H\\' #Quadratic single peak 2H
+# dpath = r'data\runs\quadPeakDist2H\\'
+# dcpath = r'data\runs\decent2H\\'
 
 # cpath = r'data\runs\hourlyPeakCent2H\\' #hourly peak 2H
 # dpath = r'data\runs\hourlyPeakDist2H\\'
@@ -38,15 +32,15 @@ import pytz
 
 # cpath = r'data\runs\quadPeakCent8H\\' #Quadratic single peak 8H
 # dpath = r'data\runs\quadPeakDist8H\\'
-# dcpath = r'data\runs\MPCWrapper-decent8H\\'
+# dcpath = r'data\runs\decent8H\\'
 
 # cpath = r'data\runs\linPeakCent8H\\' #Linear single peak 8H
 # dpath = r'data\runs\linPeakDist8H\\'
-# dcpath = r'data\runs\MPCWrapper-decent8H\\'
+# dcpath = r'data\runs\decent8H\\'
 
-cpath = r'data\runs\hourlyPeakCent8H\\' #Hourly peak 8H
-dpath = r'data\runs\hourlyPeakDist8H\\'
-dcpath = r'data\runs\MPCWrapper-decent8H\\'
+# cpath = r'data\runs\hourlyPeakCent8H\\' #Hourly peak 8H
+# dpath = r'data\runs\hourlyPeakDist8H\\'
+# dcpath = r'data\runs\decent8H\\'
 
 
 ccpath = r'data\runs\MPCWrapperSerial-N288T288-quadPeakCent\MPCCentralizedSinglePeakConvex-cent.json' #quad cost
@@ -307,8 +301,8 @@ def plot_power_total(c_path, d_path, dc_path, title=''):
     plt.title(title+'Total Power Consumption')
     plt.show()
 
-title = 'Hourly Peak Cost, 8 Houses: '
-# plot_2_houses(cpath, dpath, dcpath, title)
+title = 'Linear Peak Cost, 2 Houses: '
+plot_2_houses(cpath, dpath, dcpath, title)
 plot_power_hourly(cpath, dpath, dcpath, title)
 plot_power_total(cpath, dpath, dcpath, title)
 table_values(cpath, dpath, dcpath)
