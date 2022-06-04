@@ -92246,7 +92246,7 @@
         },
         "peak": {
             "opt_params": {
-                "peak_weight": 144.0,
+                "peak_weight": 10,
                 "peak_weight_quad": 1
             },
             "bounds": {},

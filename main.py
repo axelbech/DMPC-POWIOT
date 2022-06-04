@@ -202,7 +202,8 @@ params_hourly_8['hourly_peak'] = {'opt_params': {'hourly_weight_quad': hourly_we
 
 # if __name__ == '__main__':    
 #     cmpc = MPCCentralizedHourly(N, T, 'cent', params_hourly, int(np.ceil(N/12)))
-#     wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
+#     wrapper = MPCWrapper(N, T, [cmpc])
+#     # wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
 #     wrapper.run_full()
 #     wrapper.persist_results('data/runs/')
 
@@ -218,36 +219,39 @@ params_hourly_8['hourly_peak'] = {'opt_params': {'hourly_weight_quad': hourly_we
     
 # if __name__ == '__main__':    
 #     cmpc = MPCCentralizedSinglePeakConvex(N, T, 'cent', params_single_peak, N-1)
-#     wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
+#     wrapper = MPCWrapper(N, T, [cmpc])
+#     # wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
 #     wrapper.run_full()
 #     wrapper.persist_results('data/runs/')
     
 
-if __name__ == '__main__':    # FOR RUNNING THE LINEAR PEAK COST, 2 HOUSES
-    proxGradSolver = ProximalGradientSolver(N, peak_weight_single)
-    mpcs = dict(
-    House1 = MPCSingleHomeDistributed(N, T, 'House1', params['House1']),
-    House2 =  MPCSingleHomeDistributed(N, T, 'House2', params['House2'])
-    )
-    wrapper = DMPCWrapperSerialProxGrad(N, T, mpcs, 0, 
-                                        dual_variables_length=N-1,
-                                        step_size = 0.5,
-                                        proximalGradientSolver=proxGradSolver)
-    wrapper.run_full()  
-    wrapper.persist_results('data/runs/')
+# if __name__ == '__main__':    # FOR RUNNING THE LINEAR PEAK COST, 2 HOUSES
+#     proxGradSolver = ProximalGradientSolver(N, peak_weight_single)
+#     mpcs = dict(
+#     House1 = MPCSingleHomeDistributed(N, T, 'House1', params['House1']),
+#     House2 =  MPCSingleHomeDistributed(N, T, 'House2', params['House2'])
+#     )
+#     wrapper = DMPCWrapperSerialProxGrad(N, T, mpcs, 0, 
+#                                         dual_variables_length=N-1,
+#                                         step_size = 0.5,
+#                                         proximalGradientSolver=proxGradSolver)
+#     wrapper.run_full()  
+#     wrapper.persist_results('data/runs/')
 
 # if __name__ == '__main__':    
 #     cmpc = MPCCentralizedHomeSinglePeak(N, T, 'cent', params_single_peak, N-1)
-#     wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
+#     wrapper = MPCWrapper(N, T, [cmpc])
+#     # wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
 #     wrapper.run_full()
 #     wrapper.persist_results('data/runs/')
 
-# if __name__ == '__main__':    # FOR RUNNING THE DECENTRALIZED APPROACH
+# if __name__ == '__main__':    # FOR RUNNING THE DECENTRALIZED APPROACH, 2H
 #     mpcs = dict(
 #         House1 = MPCSingleHome(N, T, 'House1', params_single_peak['House1']),
 #         House2 =  MPCSingleHome(N, T, 'House2', params_single_peak['House2'])
 #         )
-#     wrapper = MPCWrapperSerial(N, T, mpcs)
+#     wrapper = MPCWrapper(N, T, list(mpcs.values()))
+#     # wrapper = MPCWrapperSerial(N, T, mpcs)
 #     wrapper.run_full()
 #     wrapper.persist_results('data/runs/')
 
@@ -255,7 +259,8 @@ if __name__ == '__main__':    # FOR RUNNING THE LINEAR PEAK COST, 2 HOUSES
 
 # if __name__ == '__main__':    # QUAD SINGLE PEAK 8H
 #     cmpc = MPCCentralizedSinglePeakConvex(N, T, 'cent', params_8, N-1)
-#     wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
+#     wrapper = MPCWrapper(N, T, [cmpc])
+#     # wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
 #     wrapper.run_full()
 #     wrapper.persist_results('data/runs/')
     
@@ -272,7 +277,8 @@ if __name__ == '__main__':    # FOR RUNNING THE LINEAR PEAK COST, 2 HOUSES
 
 # if __name__ == '__main__':    # LINEAR PROJECTED SINGLE PEAK 8H
 #     cmpc = MPCCentralizedHomeSinglePeak(N, T, 'cent', params_8, N-1)
-#     wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
+#     wrapper = MPCWrapper(N, T, [cmpc])
+#     # wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
 #     wrapper.run_full()
 #     wrapper.persist_results('data/runs/')
     
@@ -291,7 +297,8 @@ if __name__ == '__main__':    # FOR RUNNING THE LINEAR PEAK COST, 2 HOUSES
 
 # if __name__ == '__main__':    # HOURLY PEAK COST 8H
 #     cmpc = MPCCentralizedHourly(N, T, 'cent', params_hourly_8, int(np.ceil(N/12)))
-#     wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
+#     wrapper = MPCWrapper(N, T, [cmpc])
+#     # wrapper = MPCWrapperSerial(N, T, dict(cent=cmpc))
 #     wrapper.run_full()
 #     wrapper.persist_results('data/runs/')
 
