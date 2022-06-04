@@ -190,13 +190,15 @@ params_hourly_8['hourly_peak'] = {'opt_params': {'hourly_weight_quad': hourly_we
         'initial_state': { 'hourly_peak': 0}}
 
 
-# if __name__ == '__main__':    # FOR RUNNING THE HOURLY PEAK COST, 2 HOUSES
+# if __name__ == '__main__':    # FOR RUNNING THE HOURLY PEAK COST, 2 HOUSES, no DV iteration, ftol=1e-3*N dvtol=1e-3 stepsize=0.15
 #     mpcs = dict(
 #     House1 = MPCSingleHomeHourlyDistributed(N, T, 'House1', params_hourly['House1']),
 #     House2 =  MPCSingleHomeHourlyDistributed(N, T, 'House2', params_hourly['House2']),
 #     hourly_peak = MPCHourlyPeakDistributed(N, T, 'hourly_peak', params_hourly['hourly_peak'])
 #     )
-#     wrapper = DMPCWrapperSerial(N, T, mpcs, 0, dual_variables_length=int(np.ceil(N/12)), step_size=0.15)
+#     coordinator = DMPCCoordinator(N, T, [ctrl for ctrl in mpcs], dual_update_constant=0, dual_variables_length=int(np.ceil(N/12)), step_size=0.15)
+#     wrapper = DMPCWrapper(N, T, [ctrl for ctrl in mpcs.values()],coordinator, dual_variables_length=int(np.ceil(N/12)))
+#     # wrapper = DMPCWrapperSerial(N, T, mpcs, 0, dual_variables_length=int(np.ceil(N/12)), step_size=0.15)
 #     wrapper.run_full()  
 #     wrapper.persist_results('data/runs/')
 
@@ -207,15 +209,17 @@ params_hourly_8['hourly_peak'] = {'opt_params': {'hourly_weight_quad': hourly_we
 #     wrapper.run_full()
 #     wrapper.persist_results('data/runs/')
 
-# if __name__ == '__main__':      # FOR RUNNING THE QUADRATIC PEAK COST, 2 HOUSES
-#     mpcs = dict(
-#     House1 = MPCSingleHomeDistributed(N, T, 'House1', params_single_peak['House1']),
-#     House2 =  MPCSingleHomeDistributed(N, T, 'House2', params_single_peak['House2']),
-#     peak = MPCSinglePeakDistributed(N, T, 'peak', params['peak'])
-#     )
-#     wrapper = DMPCWrapperSerial(N, T, mpcs, 0, dual_variables_length=N-1, step_size=0.1)
-#     wrapper.run_full()  
-#     wrapper.persist_results('data/runs/')
+if __name__ == '__main__':      # FOR RUNNING THE QUADRATIC PEAK COST, 2 HOUSES 
+    mpcs = dict(
+    House1 = MPCSingleHomeDistributed(N, T, 'House1', params_single_peak['House1']),
+    House2 =  MPCSingleHomeDistributed(N, T, 'House2', params_single_peak['House2']),
+    peak = MPCSinglePeakDistributed(N, T, 'peak', params['peak'])
+    )
+    coordinator = DMPCCoordinator(N, T, [ctrl for ctrl in mpcs], dual_update_constant=0, dual_variables_length=N-1, step_size=0.1)
+    wrapper = DMPCWrapper(N, T, [ctrl for ctrl in mpcs.values()],coordinator, dual_variables_length=N-1)
+    # wrapper = DMPCWrapperSerial(N, T, mpcs, 0, dual_variables_length=N-1, step_size=0.1)
+    wrapper.run_full()  
+    wrapper.persist_results('data/runs/')
     
 # if __name__ == '__main__':    
 #     cmpc = MPCCentralizedSinglePeakConvex(N, T, 'cent', params_single_peak, N-1)
@@ -225,16 +229,20 @@ params_hourly_8['hourly_peak'] = {'opt_params': {'hourly_weight_quad': hourly_we
 #     wrapper.persist_results('data/runs/')
     
 
-# if __name__ == '__main__':    # FOR RUNNING THE LINEAR PEAK COST, 2 HOUSES
+# if __name__ == '__main__':    # FOR RUNNING THE LINEAR PEAK COST, 2 HOUSES, iterate dvs, ftol=1e-4*N, dvtol=1e-4 stepsize 0.5
 #     proxGradSolver = ProximalGradientSolver(N, peak_weight_single)
 #     mpcs = dict(
 #     House1 = MPCSingleHomeDistributed(N, T, 'House1', params['House1']),
 #     House2 =  MPCSingleHomeDistributed(N, T, 'House2', params['House2'])
 #     )
-#     wrapper = DMPCWrapperSerialProxGrad(N, T, mpcs, 0, 
-#                                         dual_variables_length=N-1,
-#                                         step_size = 0.5,
-#                                         proximalGradientSolver=proxGradSolver)
+#     coordinator = DMPCCoordinatorProxGrad(N, T, [ctrl for ctrl in mpcs],
+#      dual_update_constant=0, dual_variables_length=N-1, step_size=0.5,
+#      proximalGradientSolver=proxGradSolver)
+#     wrapper = DMPCWrapper(N, T, [ctrl for ctrl in mpcs.values()],coordinator, dual_variables_length=N-1)
+#     # wrapper = DMPCWrapperSerialProxGrad(N, T, mpcs, 0, 
+#     #                                     dual_variables_length=N-1,
+#     #                                     step_size = 0.5,
+#     #                                     proximalGradientSolver=proxGradSolver)
 #     wrapper.run_full()  
 #     wrapper.persist_results('data/runs/')
 
